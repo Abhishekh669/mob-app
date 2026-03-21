@@ -1,6 +1,7 @@
 import { create } from "zustand"
 import { persist, createJSONStorage } from "zustand/middleware"
 import AsyncStorage from "@react-native-async-storage/async-storage"
+import { RemoveUserToken } from "@/utils/storage/user.auth.storage"
 
 export type Role =
   | "admin"
@@ -30,19 +31,17 @@ export interface User {
 interface UserState {
   user: User | null
   isAuthenticated: boolean
-  hasHydrated : boolean
-
+  hasHydrated: boolean
   setUser: (user: User | null) => void
   updateUser: (data: Partial<User>) => void
-  logout: () => void
+  logout: () => Promise<void>
 }
+
 export const useUserStore = create<UserState>()(
   persist(
     (set) => ({
       user: null,
       isAuthenticated: false,
-
-      // ✅ new
       hasHydrated: false,
 
       setUser: (user) =>
@@ -56,17 +55,18 @@ export const useUserStore = create<UserState>()(
           user: state.user ? { ...state.user, ...data } : null,
         })),
 
-      logout: () =>
+      // Clears both the zustand store AND the SecureStore token
+      logout: async () => {
+        await RemoveUserToken();
         set({
           user: null,
           isAuthenticated: false,
-        }),
+        });
+      },
     }),
     {
       name: "user-storage",
       storage: createJSONStorage(() => AsyncStorage),
-
-      // ✅ VERY IMPORTANT
       onRehydrateStorage: () => () => {
         useUserStore.setState({ hasHydrated: true })
       },

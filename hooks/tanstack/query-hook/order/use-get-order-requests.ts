@@ -9,7 +9,7 @@ export const fetchOrderRequests = async () => {
 
 export const useGetOrderRequests = (pooling ?: boolean) => {
   return useQuery({
-    queryKey: ["get-tables"],
+    queryKey: ["get-order-requests"],
     queryFn:  fetchOrderRequests,
     placeholderData: keepPreviousData,
     refetchInterval : pooling ? 5000 : false,

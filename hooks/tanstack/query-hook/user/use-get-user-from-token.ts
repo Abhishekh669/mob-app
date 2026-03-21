@@ -1,5 +1,5 @@
 import { getErrorMessage } from "@/utils/helper/get-error-message";
-import { GetUserToken } from "@/utils/storage/user.auth.storage";
+import { GetUserToken, RemoveUserToken } from "@/utils/storage/user.auth.storage";
 import { User } from "@/utils/store/user/use-user-store";
 import { useQuery } from "@tanstack/react-query";
 import axios from "axios";
@@ -28,29 +28,21 @@ export const verifyUserToken = async (): Promise<VerifyUserResult> => {
     );
 
     const data = res.data;
+
     if (!data.success || !data.user) {
-      // Backend says user is not valid → also treat as unauthenticated
-      console.log(
-        "verifyUserToken: backend reported invalid user:",
-        data?.error
-      );
+      // Backend says token is invalid → remove it from storage
+      await RemoveUserToken();
+      console.log("verifyUserToken: backend reported invalid user:", data?.error);
       return { success: false, user: null };
     }
 
-    console.log("this is the data in verify user : ", data);
     const user: User = data.user;
-
-    return {
-      user,
-      success: true,
-    };
+    return { success: true, user };
   } catch (error) {
     const errMsg = getErrorMessage(error);
-    console.log("this ishte error in verifying user : ", errMsg);
-
-    // Network / parsing / other failure → do NOT throw,
-    // just log and treat as unauthenticated so we don't
-    // cause repeated error-driven re-renders.
+    console.log("verifyUserToken error:", errMsg);
+    // Network / parsing failure → remove potentially bad token
+    await RemoveUserToken();
     return { success: false, user: null };
   }
 };
@@ -59,7 +51,6 @@ export const useGetUserFromToken = () => {
   return useQuery({
     queryKey: ["get-user-from-token"],
     queryFn: verifyUserToken,
-    refetchOnWindowFocus: true, // refresh on tab focus
+    refetchOnWindowFocus: true,
   });
 };
-

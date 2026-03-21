@@ -20,7 +20,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CustomerOrderRequest, OrderItemType, orderStatus } from '@/utils/types/order/order.types';
 import { approveOrder } from '@/utils/actions/order/order.post';
+import { deleteTableSession } from '@/utils/actions/order/order.delete'; // ← import delete action
 import Toast from 'react-native-toast-message';
+import { QueryClient, useQueryClient } from '@tanstack/react-query';
 
 interface ApproveOrderItem {
   id: string;
@@ -75,6 +77,7 @@ function TableSessionPage() {
   const params = useLocalSearchParams();
   const tableSessionId = params['table-session'] as string;
   const insets = useSafeAreaInsets();
+  const queryClient = useQueryClient();
 
   const [showSummaryModal, setShowSummaryModal] = useState(false);
   const [showOriginalData, setShowOriginalData] = useState(false);
@@ -84,6 +87,7 @@ function TableSessionPage() {
   const [editedNote, setEditedNote] = useState('');
   const [expandedItemId, setExpandedItemId] = useState<string | null>(null);
   const [isApproving, setIsApproving] = useState(false);
+  const [isDeletingSession, setIsDeletingSession] = useState(false); // ← new state
   const [refreshing, setRefreshing] = useState(false);
 
   // Item scale animations for quantity press feedback
@@ -153,6 +157,51 @@ function TableSessionPage() {
     } finally {
       setRefreshing(false);
     }
+  };
+
+  // ── Delete session handler ───────────────────────────────────────────────────
+  const handleDeleteSession = () => {
+    if (isDeletingSession || isApproving) return;
+    Alert.alert(
+      'Delete Table Session',
+      'Are you sure you want to delete this entire table session? This action cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            setIsDeletingSession(true);
+            try {
+              const res = await deleteTableSession(tableSessionId);
+              if (res.success) {
+                Toast.show({
+                  type: 'success',
+                  text1: res.message || 'Session deleted successfully',
+                  visibilityTime: 2000,
+                });
+                queryClient.invalidateQueries({queryKey : ["get-order-requests"]})
+                
+                setTimeout(() => {
+                  router.replace('/(main)/order-request');
+                }, 400);
+              } else {
+                throw new Error(res.error || 'Failed to delete session');
+              }
+            } catch (err: any) {
+              Toast.show({
+                type: 'error',
+                text1: 'Failed to delete session',
+                text2: err?.message || 'Please try again',
+                visibilityTime: 2500,
+              });
+            } finally {
+              setIsDeletingSession(false);
+            }
+          },
+        },
+      ]
+    );
   };
 
   const handleQuantityChange = (itemId: string, delta: number) => {
@@ -262,6 +311,7 @@ function TableSessionPage() {
       if (res.message && res.success) {
         Toast.show({ type: 'success', text1: res.message || 'Order approved!', visibilityTime: 2000 });
         closeModal();
+        queryClient.invalidateQueries({queryKey : ["get-orders-status"]})
         setTimeout(() => {
           refetch();
           router.replace('/(main)/orders-status');
@@ -362,9 +412,20 @@ function TableSessionPage() {
               <TouchableOpacity
                 style={s.refreshBtn}
                 onPress={handleManualRefresh}
-                disabled={isApproving || refreshing}
+                disabled={isApproving || refreshing || isDeletingSession}
               >
                 <Ionicons name={refreshing ? 'hourglass' : 'refresh'} size={18} color={C.brand} />
+              </TouchableOpacity>
+              {/* ── Delete session button ── */}
+              <TouchableOpacity
+                style={s.deleteSessionBtn}
+                onPress={handleDeleteSession}
+                disabled={isApproving || isDeletingSession}
+              >
+                {isDeletingSession
+                  ? <ActivityIndicator size="small" color={C.danger} />
+                  : <Ionicons name="trash-outline" size={18} color={C.danger} />
+                }
               </TouchableOpacity>
             </View>
           </View>
@@ -820,6 +881,16 @@ const s = StyleSheet.create({
 
   // Refresh btn
   refreshBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: C.brandLight, justifyContent: 'center', alignItems: 'center' },
+
+  // Delete session btn  ← NEW
+  deleteSessionBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(220,38,38,0.15)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
 
   // Section
   section:       { paddingHorizontal: 16, paddingTop: 20 },

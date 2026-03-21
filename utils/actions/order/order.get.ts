@@ -67,6 +67,7 @@ export const getOrderRequestsByTableId = async (tableId: string) => {
     try {
         if(!tableId)throw new Error("invalid payload")
         const user_token = await GetUserToken();
+    console.log("this is user token in request by table id : ", user_token)
         if (!user_token) throw new Error("unauthorized user")
         const res = await axios.get(`${process.env.EXPO_PUBLIC_BACKEND_URL}/api/v1/order-service/get-request-by-table-session-id/${tableId}`,
             {
@@ -88,6 +89,7 @@ export const getOrderRequestsByTableId = async (tableId: string) => {
         }
     } catch (error) {
         const errMsg = getErrorMessage(error)
+        console.log("this is hte error in by order : ", errMsg)
         return {
             success: false,
             error: errMsg
