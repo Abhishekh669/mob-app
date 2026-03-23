@@ -35,3 +35,9 @@ export interface CustomerOrderRequest {
   note: string | null;
   order_items: OrderItemType[];
 }
+
+export interface UpdateOrderItemType {
+  status : orderStatus
+  order_id : string;
+  order_item_id : string;
+}

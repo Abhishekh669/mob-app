@@ -1,16 +1,13 @@
-import { ApproveOrderType } from "@/app/(main)/order-request/[table-session]";
 import { getErrorMessage } from "@/utils/helper/get-error-message";
 import { GetUserToken } from "@/utils/storage/user.auth.storage";
+import { UpdateOrderItemType } from "@/utils/types/order/order.types";
 import axios from "axios";
 
-
-
-
-export const approveOrder = async (approveOrderData: ApproveOrderType) => {
+export const updateOrderItem = async(updateData : UpdateOrderItemType) =>{
     try {
         const user_token = await GetUserToken();
-        if (!user_token) throw new Error('invalild user')
-        const res = await axios.post(`${process.env.EXPO_PUBLIC_BACKEND_URL}/api/v1/order-service/approve-order`, approveOrderData, {
+        if(!user_token)throw new Error("user not authorized")
+            const res = await axios.put(`${process.env.EXPO_PUBLIC_BACKEND_URL}/api/v1/order-service/update-order-item`, updateData, {
             headers: {
                 Authorization: `Bearer ${user_token}`,
             },
@@ -20,16 +17,15 @@ export const approveOrder = async (approveOrderData: ApproveOrderType) => {
         if (!data?.success) {
             throw new Error(data?.error || "failed to approve order")
         }
-        
         return {
-            success: true,
-            message: data?.message || "successfully approved roder"
+            success : data?.success as boolean || true,
+            message : data?.message || "successfuly update  order"
         }
     } catch (error) {
         const errMsg = getErrorMessage(error)
         return {
-            success: false,
-            error: errMsg
+            error : errMsg, 
+            success : false,
         }
     }
 }

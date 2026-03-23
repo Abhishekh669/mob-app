@@ -39,20 +39,20 @@ const C = {
 
 // ─── Tab Routes (bottom nav) ───────────────────────────────────────────────────
 const ROUTES = [
-  { label: "Home",       path: "/(main)/home",          icon: "home-outline",          activeIcon: "home",            tabIcon: "home-outline",          tabActiveIcon: "home"           },
-  { label: "Orders",     path: "/(main)/order-request", icon: "receipt-outline",       activeIcon: "receipt",         tabIcon: "receipt-outline",       tabActiveIcon: "receipt"        },
-  { label: "Kitchen",    path: "/(main)/orders-status", icon: "flame-outline",         activeIcon: "flame",           tabIcon: "flame-outline",         tabActiveIcon: "flame"          },
-  { label: "Attendance", path: "/(main)/attendance",    icon: "calendar-outline",      activeIcon: "calendar",        tabIcon: "calendar-outline",      tabActiveIcon: "calendar"       },
-  { label: "Profile",    path: "/(main)/profile",       icon: "person-circle-outline", activeIcon: "person-circle",   tabIcon: "person-circle-outline", tabActiveIcon: "person-circle"  },
+  { label: "Home", path: "/(main)/home", icon: "home-outline", activeIcon: "home", tabIcon: "home-outline", tabActiveIcon: "home" },
+  { label: "Orders", path: "/(main)/order-request", icon: "receipt-outline", activeIcon: "receipt", tabIcon: "receipt-outline", tabActiveIcon: "receipt" },
+  { label: "Kitchen", path: "/(main)/orders-status", icon: "flame-outline", activeIcon: "flame", tabIcon: "flame-outline", tabActiveIcon: "flame" },
+  { label: "Attendance", path: "/(main)/attendance", icon: "calendar-outline", activeIcon: "calendar", tabIcon: "calendar-outline", tabActiveIcon: "calendar" },
+  {label: "Approval",path: "/(main)/approval-requests",icon: "checkmark-done-outline",activeIcon: "checkmark-done",tabIcon: "checkmark-done-outline",tabActiveIcon: "checkmark-done"}
 ];
 
 // ─── Dummy sidebar-only routes (no real navigation) ───────────────────────────
 const SIDEBAR_DUMMY_ROUTES = [
-  { label: "Dashboard",  icon: "grid-outline"       },
-  { label: "Reports",    icon: "bar-chart-outline"  },
-  { label: "Inventory",  icon: "cube-outline"       },
-  { label: "Staff",      icon: "people-outline"     },
-  { label: "Settings",   icon: "settings-outline"   },
+  { label: "Dashboard", icon: "grid-outline" },
+  { label: "Reports", icon: "bar-chart-outline" },
+  { label: "Inventory", icon: "cube-outline" },
+  { label: "Staff", icon: "people-outline" },
+  { label: "Settings", icon: "settings-outline" },
 ];
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
@@ -97,13 +97,13 @@ const SidebarDummyItem = ({
 };
 
 const ss = StyleSheet.create({
-  item:           { flexDirection: "row", alignItems: "center", paddingVertical: 12, paddingHorizontal: 14, borderRadius: 14, marginBottom: 3 },
-  itemActive:     { backgroundColor: C.accentSoft },
-  iconWrap:       { width: 38, height: 38, borderRadius: 10, backgroundColor: C.graySoft, alignItems: "center", justifyContent: "center", marginRight: 14 },
+  item: { flexDirection: "row", alignItems: "center", paddingVertical: 12, paddingHorizontal: 14, borderRadius: 14, marginBottom: 3 },
+  itemActive: { backgroundColor: C.accentSoft },
+  iconWrap: { width: 38, height: 38, borderRadius: 10, backgroundColor: C.graySoft, alignItems: "center", justifyContent: "center", marginRight: 14 },
   iconWrapActive: { backgroundColor: C.accentMid },
-  itemLabel:      { flex: 1, fontSize: 15, fontWeight: "500", color: C.ink3 },
-  itemLabelActive:{ color: C.accent, fontWeight: "700" },
-  activePip:      { width: 6, height: 6, borderRadius: 3, backgroundColor: C.accent },
+  itemLabel: { flex: 1, fontSize: 15, fontWeight: "500", color: C.ink3 },
+  itemLabelActive: { color: C.accent, fontWeight: "700" },
+  activePip: { width: 6, height: 6, borderRadius: 3, backgroundColor: C.accent },
 });
 
 // ─── Bottom tab item ───────────────────────────────────────────────────────────
@@ -155,12 +155,12 @@ const TabItem = ({
 };
 
 const ts = StyleSheet.create({
-  tabItem:          { flex: 1, alignItems: "center", justifyContent: "center" },
-  tabInner:         { alignItems: "center", justifyContent: "center", paddingVertical: 6, gap: 3 },
-  tabIconWrap:      { width: 44, height: 32, alignItems: "center", justifyContent: "center", borderRadius: 16 },
-  tabIconWrapActive:{ backgroundColor: C.accentSoft },
-  tabLabel:         { fontSize: 10, fontWeight: "600", color: C.ink3, letterSpacing: 0.2 },
-  tabLabelActive:   { color: C.accent },
+  tabItem: { flex: 1, alignItems: "center", justifyContent: "center" },
+  tabInner: { alignItems: "center", justifyContent: "center", paddingVertical: 6, gap: 3 },
+  tabIconWrap: { width: 44, height: 32, alignItems: "center", justifyContent: "center", borderRadius: 16 },
+  tabIconWrapActive: { backgroundColor: C.accentSoft },
+  tabLabel: { fontSize: 10, fontWeight: "600", color: C.ink3, letterSpacing: 0.2 },
+  tabLabelActive: { color: C.accent },
 });
 
 // ─── Main layout ───────────────────────────────────────────────────────────────
@@ -270,7 +270,7 @@ export default function MainLayout() {
       <StatusBar barStyle="dark-content" backgroundColor={C.card} />
 
       {/* ── Navbar — fixed at top using flex column ── */}
-      <View style={[layout.navbar, ]}>
+      <View style={[layout.navbar,]}>
         <View style={layout.navbarInner}>
           {/* Menu button */}
           <Pressable
@@ -436,8 +436,8 @@ const layout = StyleSheet.create({
     justifyContent: "center",
   },
   menuBtnLines: { gap: 4, alignItems: "flex-start" },
-  menuLine:     { height: 2, width: 20, backgroundColor: C.ink2, borderRadius: 2 },
-  navTitle:     { flex: 1, alignItems: "center" },
+  menuLine: { height: 2, width: 20, backgroundColor: C.ink2, borderRadius: 2 },
+  navTitle: { flex: 1, alignItems: "center" },
   navTitleText: { fontSize: 17, fontWeight: "700", color: C.ink, letterSpacing: -0.3 },
   notifBtn: {
     width: 40,
@@ -463,7 +463,7 @@ const layout = StyleSheet.create({
   notifBadgeText: { color: "#fff", fontSize: 8, fontWeight: "800" },
 
   // Screen — flex:1 to fill remaining space between navbar and tab bar
-  screenContainer: { 
+  screenContainer: {
     flex: 1,
     backgroundColor: C.surface,
   },
@@ -544,7 +544,7 @@ const layout = StyleSheet.create({
   },
   brandLogoText: { fontSize: 18, fontWeight: "800", color: "#fff", letterSpacing: 0.5 },
   brandName: { fontSize: 20, fontWeight: "800", color: C.ink, letterSpacing: -0.3 },
-  brandSub:  { fontSize: 11, color: C.ink3, fontWeight: "500", marginTop: 1 },
+  brandSub: { fontSize: 11, color: C.ink3, fontWeight: "500", marginTop: 1 },
   closeBtn: {
     width: 34,
     height: 34,

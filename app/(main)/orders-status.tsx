@@ -1,4 +1,5 @@
 import { useGetOrdersStatus } from "@/hooks/tanstack/query-hook/order/use-get-all-orders-status";
+import { updateOrderItem } from "@/utils/actions/order/order.put";
 import React, { useState, useMemo } from "react";
 import {
   View,
@@ -7,10 +8,8 @@ import {
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
-  RefreshControl,
   Alert,
   TextInput,
-  Animated,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import {
@@ -20,55 +19,60 @@ import {
 } from "@/utils/types/order/order.types";
 import Toast from "react-native-toast-message";
 
-// ─── Design tokens ─────────────────────────────────────────────────────────────
+// ─── Design tokens ──────────────────────────────────────────────────────────────
 const C = {
-  accent: "#e8622a",
-  accentSoft: "#fff3ee",
+  accent:    "#e8622a",
+  accentSoft:"#fff3ee",
   accentMid: "#fde0d2",
-  ink: "#1a1410",
-  ink2: "#5c4f43",
-  ink3: "#9c8d82",
-  surface: "#fffcf8",
-  card: "#ffffff",
-  divider: "#f0ebe4",
-  graySoft: "#f5f4f2",
-  green: "#1a8f5c",
+  ink:       "#1a1410",
+  ink2:      "#5c4f43",
+  ink3:      "#9c8d82",
+  surface:   "#fffcf8",
+  card:      "#ffffff",
+  divider:   "#f0ebe4",
+  graySoft:  "#f5f4f2",
+  green:     "#1a8f5c",
   greenSoft: "#e8f7f0",
-  blue: "#2563b8",
-  blueSoft: "#eef4ff",
-  amber: "#b45309",
+  blue:      "#2563b8",
+  blueSoft:  "#eef4ff",
+  amber:     "#b45309",
   amberSoft: "#fef9ee",
-  red: "#c0392b",
-  redSoft: "#fef2f1",
+  red:       "#c0392b",
+  redSoft:   "#fef2f1",
 };
 
 // ─── Status config ──────────────────────────────────────────────────────────────
-type StatusCfg = { label: string; bg: string; text: string; dot: string; icon: keyof typeof Ionicons.glyphMap };
+// "approved"  = order received, waiting kitchen action  → shown as "Pending"
+// "progress"  = kitchen is cooking                       → shown as "Cooking"
+// "completed" = done                                     → shown as "Done"
+// "cancelled" = cancelled                                → shown as "Cancelled"
+// "not-approved" is a valid DB value but never surfaced in this kitchen UI
+
+type StatusCfg = {
+  label: string;
+  bg: string;
+  text: string;
+  dot: string;
+  icon: keyof typeof Ionicons.glyphMap;
+};
+
 const STATUS_CFG: Record<orderStatus, StatusCfg> = {
-  "approved":     { label: "Approved",    bg: C.greenSoft, text: C.green,  dot: C.green,  icon: "checkmark-circle" },
-  "not-approved": { label: "Pending",     bg: C.amberSoft, text: C.amber,  dot: C.amber,  icon: "time" },
-  "progress":     { label: "In Progress", bg: C.blueSoft,  text: C.blue,   dot: C.blue,   icon: "cafe" },
-  "completed":    { label: "Completed",   bg: C.greenSoft, text: C.green,  dot: C.green,  icon: "checkmark-done-circle" },
-  "cancelled":    { label: "Cancelled",   bg: C.redSoft,   text: C.red,    dot: C.red,    icon: "close-circle" },
+  "approved":     { label: "Pending",   bg: C.amberSoft, text: C.amber, dot: C.amber, icon: "time" },
+  "not-approved": { label: "Pending",   bg: C.amberSoft, text: C.amber, dot: C.amber, icon: "time" },
+  "progress":     { label: "Cooking",   bg: C.blueSoft,  text: C.blue,  dot: C.blue,  icon: "cafe" },
+  "completed":    { label: "Done",      bg: C.greenSoft, text: C.green, dot: C.green, icon: "checkmark-done-circle" },
+  "cancelled":    { label: "Cancelled", bg: C.redSoft,   text: C.red,   dot: C.red,   icon: "close-circle" },
 };
 
-const STATUS_FILTERS: Array<{ value: orderStatus | "all"; label: string }> = [
-  { value: "all",          label: "All" },
-  { value: "not-approved", label: "Pending" },
-  { value: "approved",     label: "Approved" },
-  { value: "progress",     label: "In Progress" },
-  { value: "completed",    label: "Completed" },
-  { value: "cancelled",    label: "Cancelled" },
+type FilterValue = orderStatus | "all";
+
+const STATUS_FILTERS: Array<{ value: FilterValue; label: string }> = [
+  { value: "all",       label: "All" },
+  { value: "approved",  label: "Pending" },
+  { value: "progress",  label: "Cooking" },
+  { value: "completed", label: "Done" },
+  { value: "cancelled", label: "Cancelled" },
 ];
-
-// ─── Dummy action (replace with real logic later) ───────────────────────────────
-const dummyUpdateOrderStatus = async (
-  _orderId: string,
-  _itemId: string,
-  _newStatus: orderStatus
-): Promise<{ success: boolean }> => {
-  return new Promise((res) => setTimeout(() => res({ success: true }), 700));
-};
 
 // ─── StatusBadge ───────────────────────────────────────────────────────────────
 const StatusBadge = ({
@@ -100,14 +104,7 @@ const sb = StyleSheet.create({
 
 // ─── StatusActionButton ────────────────────────────────────────────────────────
 const StatusActionButton = ({
-  label,
-  icon,
-  bg,
-  textColor,
-  active,
-  loading,
-  disabled,
-  onPress,
+  label, icon, bg, textColor, active, loading, disabled, onPress,
 }: {
   label: string;
   icon: keyof typeof Ionicons.glyphMap;
@@ -158,51 +155,102 @@ const mpb = StyleSheet.create({
   fill:  { height: "100%", backgroundColor: C.accent, borderRadius: 2 },
 });
 
+// ─── Helpers ───────────────────────────────────────────────────────────────────
+
+/** True when every item in the order is in a terminal state (completed or cancelled) */
+const isOrderFullyTerminal = (order: CustomerOrderRequest) =>
+  order.order_items.every((i) => i.status === "completed" || i.status === "cancelled");
+
+/** True when every non-cancelled item is completed (order is "done") */
+const isOrderCompleted = (order: CustomerOrderRequest) =>
+  order.order_items.length > 0 &&
+  order.order_items.every((i) => i.status === "completed" || i.status === "cancelled") &&
+  order.order_items.some((i) => i.status === "completed");
+
+/**
+ * Progress % per order — counts completed + cooking items over total.
+ * Cancelled items are excluded from the denominator so they don't drag the bar down.
+ */
+const getOrderPct = (order: CustomerOrderRequest) => {
+  const active = order.order_items.filter((i) => i.status !== "cancelled");
+  if (!active.length) return 100;
+  const done = active.filter((i) => i.status === "completed" || i.status === "progress").length;
+  return Math.round((done / active.length) * 100);
+};
+
+const formatTime = (s: string) => {
+  try {
+    const d = new Date(s);
+    const h = d.getHours() % 12 || 12;
+    const m = String(d.getMinutes()).padStart(2, "0");
+    return `${h}:${m} ${d.getHours() >= 12 ? "PM" : "AM"}`;
+  } catch {
+    return "—";
+  }
+};
+
 // ─── Main component ────────────────────────────────────────────────────────────
 export default function OrdersStatusPage() {
   const { data, isLoading, isError, refetch, isRefetching } = useGetOrdersStatus(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [expandedOrders, setExpandedOrders] = useState<Record<string, boolean>>({});
-  // Per-item, per-action loading: { [itemId]: orderStatus | null }
-  const [loadingItem, setLoadingItem] = useState<Record<string, orderStatus | null>>({});
-  const [searchQuery, setSearchQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<orderStatus | "all">("all");
+
+  const [refreshing,      setRefreshing]      = useState(false);
+  const [expandedOrders,  setExpandedOrders]  = useState<Record<string, boolean>>({});
+  // Tracks which status action is in-flight for a given item id
+  const [loadingItem,     setLoadingItem]     = useState<Record<string, orderStatus | null>>({});
+  const [searchQuery,     setSearchQuery]     = useState("");
+  const [statusFilter,    setStatusFilter]    = useState<FilterValue>("all");
+  const [sortOrder,       setSortOrder]       = useState<"asc" | "desc">("asc");
 
   const onRefresh = async () => {
     setRefreshing(true);
-    try {
-      await refetch();
-    } finally {
-      setRefreshing(false);
-    }
+    try { await refetch(); } finally { setRefreshing(false); }
   };
 
-  // ── Stats ────────────────────────────────────────────────────────────────────
+  // ── Stats (per item across all orders) ──────────────────────────────────────
   const stats = useMemo(() => {
     const orders = data?.order_requests || [];
-    let total = 0, pending = 0, approved = 0, inProgress = 0, completed = 0, cancelled = 0;
+    let total = 0, pending = 0, cooking = 0, completed = 0, cancelled = 0;
     orders.forEach((o) =>
       o.order_items.forEach((item) => {
         total++;
-        if (item.status === "not-approved") pending++;
-        else if (item.status === "approved") approved++;
-        else if (item.status === "progress") inProgress++;
-        else if (item.status === "completed") completed++;
-        else if (item.status === "cancelled") cancelled++;
+        if (item.status === "approved")   pending++;
+        if (item.status === "progress")   cooking++;
+        if (item.status === "completed")  completed++;
+        if (item.status === "cancelled")  cancelled++;
       })
     );
-    const pct = total > 0 ? Math.round(((completed + inProgress) / total) * 100) : 0;
-    return { total, pending, approved, inProgress, completed, cancelled, pct };
+    const active = total - cancelled;
+    const pct = active > 0 ? Math.round(((completed + cooking) / active) * 100) : 0;
+    return { total, pending, cooking, completed, cancelled, pct };
   }, [data]);
 
-  // ── Filtered list ────────────────────────────────────────────────────────────
+  // ── Filtered + sorted order list ────────────────────────────────────────────
   const filteredOrders = useMemo(() => {
+    const now   = Date.now();
+    const h24ms = 24 * 60 * 60 * 1000;
     const orders = data?.order_requests || [];
-    return orders.filter((order) => {
-      if (order.order_items.every((i) => i.status === "completed")) return false;
-      if (statusFilter !== "all") {
+
+    const filtered = orders.filter((order) => {
+      // ── 24-hour window: drop anything older ─────────────────────────────────
+      const age = now - new Date(order.table_session.open_time).getTime();
+      if (age > h24ms) return false;
+
+      // ── Step 1: status bucket ──────────────────────────────────────────────
+      if (statusFilter === "completed" || statusFilter === "cancelled") {
+        // Terminal tabs: show orders where every item is in a terminal state
+        // and at least one matches the selected terminal status
+        if (!isOrderFullyTerminal(order)) return false;
         if (!order.order_items.some((i) => i.status === statusFilter)) return false;
+      } else {
+        // Active tabs: hide fully-terminal orders — they belong in terminal tabs
+        if (isOrderFullyTerminal(order)) return false;
+        // Specific status tab: order must have at least one item with that status
+        if (statusFilter !== "all") {
+          if (!order.order_items.some((i) => i.status === statusFilter)) return false;
+        }
       }
+
+      // ── Step 2: search — applies to every tab ─────────────────────────────
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
         return (
@@ -211,28 +259,30 @@ export default function OrdersStatusPage() {
           (order.customer_phone?.includes(q) ?? false)
         );
       }
+
       return true;
     });
-  }, [data, statusFilter, searchQuery]);
 
-  // ── Helpers ──────────────────────────────────────────────────────────────────
-  const getOrderPct = (order: CustomerOrderRequest) => {
-    const t = order.order_items.length;
-    if (!t) return 0;
-    const done = order.order_items.filter((i) => i.status === "completed" || i.status === "progress").length;
-    return Math.round((done / t) * 100);
-  };
+    // ── Sort ─────────────────────────────────────────────────────────────────
+    // active tabs  → oldest first (asc default) so urgent orders stay at top
+    // terminal tabs → newest first (desc default) so latest completions are on top
+    const isTerminalTab = statusFilter === "completed" || statusFilter === "cancelled";
+    const defaultDir    = isTerminalTab ? "desc" : "asc";
+    const dir           = sortOrder === defaultDir ? 1 : -1;
 
-  const formatTime = (s: string) => {
-    try {
-      const d = new Date(s);
-      const h = d.getHours() % 12 || 12, m = String(d.getMinutes()).padStart(2, "0");
-      return `${h}:${m} ${d.getHours() >= 12 ? "PM" : "AM"}`;
-    } catch { return "—"; }
-  };
+    return [...filtered].sort((a, b) => {
+      const ta = new Date(a.table_session.open_time).getTime();
+      const tb = new Date(b.table_session.open_time).getTime();
+      return (ta - tb) * dir;
+    });
+  }, [data, statusFilter, searchQuery, sortOrder]);
 
   // ── Status update ─────────────────────────────────────────────────────────────
-  const updateStatus = async (order: CustomerOrderRequest, item: OrderItemType, newStatus: orderStatus) => {
+  const updateStatus = (
+    order: CustomerOrderRequest,
+    item: OrderItemType,
+    newStatus: orderStatus
+  ) => {
     if (newStatus === "cancelled") {
       Alert.alert("Cancel Item", `Cancel "${item.menu_name}"?`, [
         { text: "No", style: "cancel" },
@@ -243,22 +293,41 @@ export default function OrdersStatusPage() {
     doUpdate(order, item, newStatus);
   };
 
-  const doUpdate = async (order: CustomerOrderRequest, item: OrderItemType, newStatus: orderStatus) => {
+  const doUpdate = async (
+    order: CustomerOrderRequest,
+    item: OrderItemType,
+    newStatus: orderStatus
+  ) => {
     setLoadingItem((prev) => ({ ...prev, [item.id]: newStatus }));
     try {
-      const res = await dummyUpdateOrderStatus(order.id, item.id, newStatus);
+      const res = await updateOrderItem({
+        status:        newStatus,
+        order_id:      order.id,
+        order_item_id: item.id,
+      });
+
       if (res.success) {
-        Toast.show({ type: "success", text1: `${item.menu_name} → ${STATUS_CFG[newStatus].label}`, visibilityTime: 1500 });
+        Toast.show({
+          type:           "success",
+          text1:          `${item.menu_name} → ${STATUS_CFG[newStatus].label}`,
+          visibilityTime: 1500,
+        });
         await refetch();
+      } else {
+        Toast.show({ type: "error", text1: res.error ?? "Failed to update", visibilityTime: 2000 });
       }
     } catch {
       Toast.show({ type: "error", text1: "Failed to update", visibilityTime: 2000 });
     } finally {
-      setLoadingItem((prev) => { const n = { ...prev }; delete n[item.id]; return n; });
+      setLoadingItem((prev) => {
+        const next = { ...prev };
+        delete next[item.id];
+        return next;
+      });
     }
   };
 
-  // ── Loading / Error / Empty ───────────────────────────────────────────────────
+  // ── Loading / Error ───────────────────────────────────────────────────────────
   if (isLoading) {
     return (
       <View style={s.center}>
@@ -287,19 +356,34 @@ export default function OrdersStatusPage() {
   // ── Render ────────────────────────────────────────────────────────────────────
   return (
     <View style={s.page}>
+
       {/* ── Header ── */}
       <View style={s.header}>
         <View style={s.headerRow}>
           <Text style={s.headerTitle}>Kitchen</Text>
-          <TouchableOpacity
-            style={[s.refreshBtn, (refreshing || isRefetching) && { opacity: 0.5 }]}
-            onPress={onRefresh}
-            disabled={refreshing || isRefetching}
-            activeOpacity={0.75}
-          >
-            <Ionicons name="refresh-outline" size={18} color={C.accent} />
-            <Text style={s.refreshBtnText}>Refresh</Text>
-          </TouchableOpacity>
+          <View style={s.headerBtns}>
+            <TouchableOpacity
+              style={s.sortBtn}
+              onPress={() => setSortOrder((p) => (p === "asc" ? "desc" : "asc"))}
+              activeOpacity={0.75}
+            >
+              <Ionicons
+                name={sortOrder === "asc" ? "arrow-up-outline" : "arrow-down-outline"}
+                size={15}
+                color={C.ink2}
+              />
+              <Text style={s.sortBtnText}>{sortOrder === "asc" ? "Oldest" : "Newest"}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[s.refreshBtn, (refreshing || isRefetching) && { opacity: 0.5 }]}
+              onPress={onRefresh}
+              disabled={refreshing || isRefetching}
+              activeOpacity={0.75}
+            >
+              <Ionicons name="refresh-outline" size={18} color={C.accent} />
+              <Text style={s.refreshBtnText}>Refresh</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* ── Progress overview ── */}
@@ -311,20 +395,19 @@ export default function OrdersStatusPage() {
             </View>
             <View style={s.overviewRight}>
               <Text style={s.overviewBig}>{stats.completed}</Text>
-              <Text style={s.overviewBigLabel}>of {stats.total} done</Text>
+              <Text style={s.overviewBigLabel}>of {stats.total - stats.cancelled} done</Text>
             </View>
           </View>
           <View style={s.bigProgressTrack}>
             <View style={[s.bigProgressFill, { width: `${stats.pct}%` }]} />
           </View>
           <View style={s.overviewStats}>
-            {[
-              { label: "Pending",  value: stats.pending,    dot: C.amber },
-              { label: "Approved", value: stats.approved,   dot: C.green },
-              { label: "Cooking",  value: stats.inProgress, dot: C.blue  },
-              { label: "Done",     value: stats.completed,  dot: C.green },
-              { label: "Cancelled",value: stats.cancelled,  dot: C.red   },
-            ].map((st) => (
+            {([
+              { label: "Pending",   value: stats.pending,   dot: C.amber },
+              { label: "Cooking",   value: stats.cooking,   dot: C.blue  },
+              { label: "Done",      value: stats.completed, dot: C.green },
+              { label: "Cancelled", value: stats.cancelled, dot: C.red   },
+            ] as const).map((st) => (
               <View key={st.label} style={s.overviewStatItem}>
                 <View style={[s.overviewDot, { backgroundColor: st.dot }]} />
                 <Text style={s.overviewStatVal}>{st.value}</Text>
@@ -352,7 +435,12 @@ export default function OrdersStatusPage() {
         </View>
 
         {/* ── Filter chips ── */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.chipScroll} contentContainerStyle={{ gap: 8, paddingBottom: 4 }}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={s.chipScroll}
+          contentContainerStyle={{ gap: 8, paddingBottom: 4 }}
+        >
           {STATUS_FILTERS.map((f) => (
             <TouchableOpacity
               key={f.value}
@@ -371,32 +459,38 @@ export default function OrdersStatusPage() {
         style={s.list}
         contentContainerStyle={s.listContent}
         showsVerticalScrollIndicator={false}
-      
       >
         {filteredOrders.length === 0 ? (
           <View style={s.emptyState}>
             <View style={[s.stateIcon, { backgroundColor: C.graySoft }]}>
               <Ionicons name="restaurant-outline" size={32} color={C.ink3} />
             </View>
-            <Text style={s.stateTitle}>No active orders</Text>
+            <Text style={s.stateTitle}>No orders here</Text>
             <Text style={s.stateMsg}>
-              {searchQuery || statusFilter !== "all" ? "Try adjusting your filters" : "All orders are completed"}
+              {searchQuery || statusFilter !== "all"
+                ? "Try adjusting your filters"
+                : "All orders are completed"}
             </Text>
           </View>
         ) : (
           filteredOrders.map((order) => {
             const isExpanded = expandedOrders[order.id] ?? false;
-            const pct = getOrderPct(order);
-            const pendingCt = order.order_items.filter((i) => i.status === "not-approved" || i.status === "approved").length;
-            const cookingCt = order.order_items.filter((i) => i.status === "progress").length;
-            const doneCt    = order.order_items.filter((i) => i.status === "completed").length;
+            const pct        = getOrderPct(order);
+
+            // Per-table item counts (excluding cancelled from active counts)
+            const pendingCt  = order.order_items.filter((i) => i.status === "approved").length;
+            const cookingCt  = order.order_items.filter((i) => i.status === "progress").length;
+            const doneCt     = order.order_items.filter((i) => i.status === "completed").length;
 
             return (
               <View key={order.id} style={s.card}>
+
                 {/* ── Card header (always visible) ── */}
                 <TouchableOpacity
                   style={s.cardHeader}
-                  onPress={() => setExpandedOrders((p) => ({ ...p, [order.id]: !p[order.id] }))}
+                  onPress={() =>
+                    setExpandedOrders((p) => ({ ...p, [order.id]: !p[order.id] }))
+                  }
                   activeOpacity={0.8}
                 >
                   <View style={s.tableTag}>
@@ -415,18 +509,38 @@ export default function OrdersStatusPage() {
                       <Text style={s.cardPct}>{pct}%</Text>
                     </View>
                     <View style={s.cardMiniStats}>
-                      {pendingCt > 0 && <View style={s.miniStat}><View style={[s.miniDot, { backgroundColor: C.amber }]} /><Text style={s.miniStatText}>{pendingCt} pending</Text></View>}
-                      {cookingCt > 0 && <View style={s.miniStat}><View style={[s.miniDot, { backgroundColor: C.blue }]} /><Text style={s.miniStatText}>{cookingCt} cooking</Text></View>}
-                      {doneCt > 0   && <View style={s.miniStat}><View style={[s.miniDot, { backgroundColor: C.green }]} /><Text style={s.miniStatText}>{doneCt} done</Text></View>}
+                      {pendingCt > 0 && (
+                        <View style={s.miniStat}>
+                          <View style={[s.miniDot, { backgroundColor: C.amber }]} />
+                          <Text style={s.miniStatText}>{pendingCt} pending</Text>
+                        </View>
+                      )}
+                      {cookingCt > 0 && (
+                        <View style={s.miniStat}>
+                          <View style={[s.miniDot, { backgroundColor: C.blue }]} />
+                          <Text style={s.miniStatText}>{cookingCt} cooking</Text>
+                        </View>
+                      )}
+                      {doneCt > 0 && (
+                        <View style={s.miniStat}>
+                          <View style={[s.miniDot, { backgroundColor: C.green }]} />
+                          <Text style={s.miniStatText}>{doneCt} done</Text>
+                        </View>
+                      )}
                     </View>
                   </View>
 
-                  <Ionicons name={isExpanded ? "chevron-up" : "chevron-down"} size={20} color={C.ink3} />
+                  <Ionicons
+                    name={isExpanded ? "chevron-up" : "chevron-down"}
+                    size={20}
+                    color={C.ink3}
+                  />
                 </TouchableOpacity>
 
                 {/* ── Expanded content ── */}
                 {isExpanded && (
                   <View style={s.cardBody}>
+
                     {/* Customer info strip */}
                     {(order.customer_phone || order.note) && (
                       <View style={s.customerStrip}>
@@ -445,16 +559,16 @@ export default function OrdersStatusPage() {
                       </View>
                     )}
 
-                    {/* Items */}
                     <Text style={s.itemsHeading}>Items · {order.order_items.length}</Text>
 
                     {order.order_items.map((item, idx) => {
-                      const loadingAction = loadingItem[item.id] ?? null; // which action is loading for THIS item
-                      const isCancelled  = item.status === "cancelled";
-                      const isCompleted  = item.status === "completed";
+                      const loadingAction = loadingItem[item.id] ?? null;
+                      const isCancelled   = item.status === "cancelled";
+                      const isCompleted   = item.status === "completed";
 
                       return (
                         <View key={item.id} style={[s.itemCard, idx > 0 && { marginTop: 10 }]}>
+
                           {/* Item name row */}
                           <View style={s.itemTopRow}>
                             <View style={s.itemNameBlock}>
@@ -464,16 +578,17 @@ export default function OrdersStatusPage() {
                                 <Text style={s.itemDot}>·</Text>
                                 <Text style={s.itemPrice}>₹{item.price}</Text>
                                 <Text style={s.itemDot}>·</Text>
-                                <Text style={s.itemTotal}>₹{(item.price * item.quantity).toLocaleString("en-IN")}</Text>
+                                <Text style={s.itemTotal}>
+                                  ₹{(item.price * item.quantity).toLocaleString("en-IN")}
+                                </Text>
                               </View>
                             </View>
                             <StatusBadge status={item.status} highlighted />
                           </View>
 
-                          {/* Action buttons — only show if not terminal */}
+                          {/* Action buttons — only show for non-terminal items */}
                           {!isCompleted && !isCancelled && (
                             <View style={s.actionRow}>
-                              {/* → Progress */}
                               <StatusActionButton
                                 label="Cooking"
                                 icon="cafe"
@@ -484,7 +599,6 @@ export default function OrdersStatusPage() {
                                 disabled={item.status === "progress" || !!loadingAction}
                                 onPress={() => updateStatus(order, item, "progress")}
                               />
-                              {/* → Complete */}
                               <StatusActionButton
                                 label="Done"
                                 icon="checkmark-circle"
@@ -495,7 +609,6 @@ export default function OrdersStatusPage() {
                                 disabled={!!loadingAction}
                                 onPress={() => updateStatus(order, item, "completed")}
                               />
-                              {/* → Cancel */}
                               <StatusActionButton
                                 label="Cancel"
                                 icon="close-circle-outline"
@@ -511,14 +624,24 @@ export default function OrdersStatusPage() {
 
                           {/* Terminal state banner */}
                           {(isCompleted || isCancelled) && (
-                            <View style={[s.terminalBanner, { backgroundColor: isCompleted ? C.greenSoft : C.redSoft }]}>
+                            <View
+                              style={[
+                                s.terminalBanner,
+                                { backgroundColor: isCompleted ? C.greenSoft : C.redSoft },
+                              ]}
+                            >
                               <Ionicons
                                 name={isCompleted ? "checkmark-done-circle" : "close-circle"}
                                 size={14}
                                 color={isCompleted ? C.green : C.red}
                               />
-                              <Text style={[s.terminalText, { color: isCompleted ? C.green : C.red }]}>
-                                {isCompleted ? "This item is completed" : "This item was cancelled"}
+                              <Text
+                                style={[
+                                  s.terminalText,
+                                  { color: isCompleted ? C.green : C.red },
+                                ]}
+                              >
+                              {isCompleted ? "Item is Done" : "Item was Cancelled"}
                               </Text>
                             </View>
                           )}
@@ -529,7 +652,9 @@ export default function OrdersStatusPage() {
                     {/* Footer */}
                     <View style={s.cardFooter}>
                       <Ionicons name="time-outline" size={13} color={C.ink3} />
-                      <Text style={s.cardFooterText}>Opened {formatTime(order.table_session.open_time)}</Text>
+                      <Text style={s.cardFooterText}>
+                        Opened {formatTime(order.table_session.open_time)}
+                      </Text>
                       <View style={{ flex: 1 }} />
                       <Text style={s.orderId}>#{order.id.slice(0, 8)}</Text>
                     </View>
@@ -558,38 +683,41 @@ const s = StyleSheet.create({
   retryText:   { color: "#fff", fontWeight: "600", fontSize: 14 },
 
   // Header
-  header:       { backgroundColor: C.card, paddingHorizontal: 18, paddingTop: 18, paddingBottom: 12, borderBottomWidth: 1.5, borderBottomColor: C.divider },
-  headerRow:    { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 14 },
-  headerTitle:  { fontSize: 24, fontWeight: "700", color: C.ink, letterSpacing: -0.5 },
-  refreshBtn:   { flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: C.accentSoft, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999, borderWidth: 1, borderColor: C.accentMid },
-  refreshBtnText:{ fontSize: 12, color: C.accent, fontWeight: "600" },
+  header:         { backgroundColor: C.card, paddingHorizontal: 18, paddingTop: 18, paddingBottom: 12, borderBottomWidth: 1.5, borderBottomColor: C.divider },
+  headerRow:      { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 14 },
+  headerTitle:    { fontSize: 24, fontWeight: "700", color: C.ink, letterSpacing: -0.5 },
+  refreshBtn:     { flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: C.accentSoft, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999, borderWidth: 1, borderColor: C.accentMid },
+  refreshBtnText: { fontSize: 12, color: C.accent, fontWeight: "600" },
+  headerBtns:     { flexDirection: "row", alignItems: "center", gap: 8 },
+  sortBtn:        { flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: C.graySoft, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999, borderWidth: 1, borderColor: C.divider },
+  sortBtnText:    { fontSize: 12, color: C.ink2, fontWeight: "600" },
 
   // Overview card
-  overviewCard:     { backgroundColor: C.graySoft, borderRadius: 14, padding: 14, marginBottom: 14 },
-  overviewTop:      { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 },
-  overviewLabel:    { fontSize: 11, color: C.ink3, fontWeight: "600", textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 2 },
-  overviewPct:      { fontSize: 28, fontWeight: "700", color: C.accent, letterSpacing: -1 },
-  overviewRight:    { alignItems: "flex-end" },
-  overviewBig:      { fontSize: 24, fontWeight: "700", color: C.ink },
-  overviewBigLabel: { fontSize: 12, color: C.ink3 },
-  bigProgressTrack: { height: 6, backgroundColor: C.divider, borderRadius: 3, overflow: "hidden", marginBottom: 12 },
-  bigProgressFill:  { height: "100%", backgroundColor: C.accent, borderRadius: 3 },
-  overviewStats:    { flexDirection: "row", justifyContent: "space-between" },
-  overviewStatItem: { alignItems: "center", gap: 3 },
-  overviewDot:      { width: 7, height: 7, borderRadius: 4 },
-  overviewStatVal:  { fontSize: 15, fontWeight: "700", color: C.ink },
-  overviewStatLabel:{ fontSize: 10, color: C.ink3 },
+  overviewCard:      { backgroundColor: C.graySoft, borderRadius: 14, padding: 14, marginBottom: 14 },
+  overviewTop:       { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 },
+  overviewLabel:     { fontSize: 11, color: C.ink3, fontWeight: "600", textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 2 },
+  overviewPct:       { fontSize: 28, fontWeight: "700", color: C.accent, letterSpacing: -1 },
+  overviewRight:     { alignItems: "flex-end" },
+  overviewBig:       { fontSize: 24, fontWeight: "700", color: C.ink },
+  overviewBigLabel:  { fontSize: 12, color: C.ink3 },
+  bigProgressTrack:  { height: 6, backgroundColor: C.divider, borderRadius: 3, overflow: "hidden", marginBottom: 12 },
+  bigProgressFill:   { height: "100%", backgroundColor: C.accent, borderRadius: 3 },
+  overviewStats:     { flexDirection: "row", justifyContent: "space-between" },
+  overviewStatItem:  { alignItems: "center", gap: 3 },
+  overviewDot:       { width: 7, height: 7, borderRadius: 4 },
+  overviewStatVal:   { fontSize: 15, fontWeight: "700", color: C.ink },
+  overviewStatLabel: { fontSize: 10, color: C.ink3 },
 
   // Search
   searchBox:   { flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: C.graySoft, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 9, marginBottom: 10, borderWidth: 1, borderColor: C.divider },
   searchInput: { flex: 1, fontSize: 14, color: C.ink, padding: 0 },
 
   // Chips
-  chipScroll:    { marginBottom: 4 },
-  chip:          { paddingHorizontal: 14, paddingVertical: 7, backgroundColor: C.graySoft, borderRadius: 999 },
-  chipActive:    { backgroundColor: C.accent },
-  chipText:      { fontSize: 12, color: C.ink2, fontWeight: "500" },
-  chipTextActive:{ color: "#fff", fontWeight: "600" },
+  chipScroll:     { marginBottom: 4 },
+  chip:           { paddingHorizontal: 14, paddingVertical: 7, backgroundColor: C.graySoft, borderRadius: 999 },
+  chipActive:     { backgroundColor: C.accent },
+  chipText:       { fontSize: 12, color: C.ink2, fontWeight: "500" },
+  chipTextActive: { color: "#fff", fontWeight: "600" },
 
   // List
   list:        { flex: 1 },
@@ -599,20 +727,20 @@ const s = StyleSheet.create({
   emptyState: { alignItems: "center", paddingTop: 60 },
 
   // Card
-  card:       { backgroundColor: C.card, borderRadius: 16, marginBottom: 14, borderWidth: 1.5, borderColor: C.divider, overflow: "hidden" },
-  cardHeader: { flexDirection: "row", alignItems: "center", gap: 12, padding: 14 },
-  tableTag:   { width: 52, height: 52, backgroundColor: C.accentSoft, borderRadius: 12, borderWidth: 1.5, borderColor: C.accentMid, alignItems: "center", justifyContent: "center" },
-  tableTagSup:{ fontSize: 8, fontWeight: "700", color: C.accent, letterSpacing: 1 },
-  tableTagNum:{ fontSize: 20, fontWeight: "700", color: C.accent, marginTop: -2 },
-  cardHeaderMid:   { flex: 1 },
-  cardCustomer:    { fontSize: 15, fontWeight: "600", color: C.ink, marginBottom: 4 },
-  cardCustomerMuted:{ fontSize: 15, color: C.ink3, marginBottom: 4 },
-  cardHeaderMeta:  { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 5 },
-  cardPct:         { fontSize: 12, fontWeight: "600", color: C.accent, minWidth: 32 },
-  cardMiniStats:   { flexDirection: "row", gap: 8, flexWrap: "wrap" },
-  miniStat:        { flexDirection: "row", alignItems: "center", gap: 4 },
-  miniDot:         { width: 6, height: 6, borderRadius: 3 },
-  miniStatText:    { fontSize: 11, color: C.ink3 },
+  card:              { backgroundColor: C.card, borderRadius: 16, marginBottom: 14, borderWidth: 1.5, borderColor: C.divider, overflow: "hidden" },
+  cardHeader:        { flexDirection: "row", alignItems: "center", gap: 12, padding: 14 },
+  tableTag:          { width: 52, height: 52, backgroundColor: C.accentSoft, borderRadius: 12, borderWidth: 1.5, borderColor: C.accentMid, alignItems: "center", justifyContent: "center" },
+  tableTagSup:       { fontSize: 8, fontWeight: "700", color: C.accent, letterSpacing: 1 },
+  tableTagNum:       { fontSize: 20, fontWeight: "700", color: C.accent, marginTop: -2 },
+  cardHeaderMid:     { flex: 1 },
+  cardCustomer:      { fontSize: 15, fontWeight: "600", color: C.ink, marginBottom: 4 },
+  cardCustomerMuted: { fontSize: 15, color: C.ink3, marginBottom: 4 },
+  cardHeaderMeta:    { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 5 },
+  cardPct:           { fontSize: 12, fontWeight: "600", color: C.accent, minWidth: 32 },
+  cardMiniStats:     { flexDirection: "row", gap: 8, flexWrap: "wrap" },
+  miniStat:          { flexDirection: "row", alignItems: "center", gap: 4 },
+  miniDot:           { width: 6, height: 6, borderRadius: 3 },
+  miniStatText:      { fontSize: 11, color: C.ink3 },
 
   // Card body
   cardBody:      { borderTopWidth: 1, borderTopColor: C.divider, padding: 14, backgroundColor: "#fdfcfb" },
@@ -623,16 +751,16 @@ const s = StyleSheet.create({
   itemsHeading:  { fontSize: 12, fontWeight: "700", color: C.ink3, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 10 },
 
   // Item card
-  itemCard:    { backgroundColor: C.card, borderRadius: 12, padding: 12, borderWidth: 1, borderColor: C.divider },
-  itemTopRow:  { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 10 },
+  itemCard:     { backgroundColor: C.card, borderRadius: 12, padding: 12, borderWidth: 1, borderColor: C.divider },
+  itemTopRow:   { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 10 },
   itemNameBlock:{ flex: 1, marginRight: 10 },
-  itemName:    { fontSize: 14, fontWeight: "600", color: C.ink, marginBottom: 4 },
-  itemMeta:    { flexDirection: "row", alignItems: "center", gap: 5 },
-  itemQty:     { fontSize: 12, color: C.ink3 },
-  itemDot:     { fontSize: 12, color: C.divider },
-  itemPrice:   { fontSize: 12, color: C.ink3 },
-  itemTotal:   { fontSize: 12, fontWeight: "600", color: C.accent },
-  actionRow:   { flexDirection: "row", gap: 8 },
+  itemName:     { fontSize: 14, fontWeight: "600", color: C.ink, marginBottom: 4 },
+  itemMeta:     { flexDirection: "row", alignItems: "center", gap: 5 },
+  itemQty:      { fontSize: 12, color: C.ink3 },
+  itemDot:      { fontSize: 12, color: C.divider },
+  itemPrice:    { fontSize: 12, color: C.ink3 },
+  itemTotal:    { fontSize: 12, fontWeight: "600", color: C.accent },
+  actionRow:    { flexDirection: "row", gap: 8 },
   terminalBanner:{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 8, padding: 8, borderRadius: 8 },
   terminalText:  { fontSize: 12, fontWeight: "500" },
 

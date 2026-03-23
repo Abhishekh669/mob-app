@@ -171,9 +171,10 @@ function TableSessionPage() {
           text: 'Delete',
           style: 'destructive',
           onPress: async () => {
+            if(!orderRequest?.customer_phone || !orderRequest?.table_session?.table_number)return;
             setIsDeletingSession(true);
             try {
-              const res = await deleteTableSession(tableSessionId);
+              const res = await deleteTableSession(tableSessionId, orderRequest.customer_phone, orderRequest.table_session.table_number);
               if (res.success) {
                 Toast.show({
                   type: 'success',
