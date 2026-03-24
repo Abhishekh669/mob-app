@@ -47,7 +47,7 @@ export const useUserStore = create<UserState>()(
       setUser: (user) =>
         set({
           user,
-          isAuthenticated: true,
+          isAuthenticated: !!user,
         }),
 
       updateUser: (data) =>
@@ -57,7 +57,6 @@ export const useUserStore = create<UserState>()(
 
       // Clears both the zustand store AND the SecureStore token
       logout: async () => {
-        await RemoveUserToken();
         set({
           user: null,
           isAuthenticated: false,

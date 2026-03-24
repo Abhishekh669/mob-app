@@ -11,21 +11,28 @@ export default function RootLayoutContent() {
   const scheme = useColorScheme();
   const router = useRouter();
   const { setUser, logout } = useUserStore();
-  const { data, isLoading } = useGetUserFromToken();
+  const { data, isLoading, isError, error } = useGetUserFromToken();
+  console.log("this is data  : ", data, isError, error)
 
   useEffect(() => {
-    if (!data) return;
+    if (isLoading || !data) return;
 
-    if (data.success && data.user) {
-      // Valid token → hydrate the store
+    if (data.status === "authenticated") {
       setUser(data.user);
-    } else {
-      // success: false → token missing, invalid, or network failure
-      // verifyUserToken already removed the token from SecureStore
+      return;
+    }
+
+    if (data.status === "error") {
+      console.log("Network/server issue → stay logged in");
+      return;
+    }
+
+    if (data.status === "unauthenticated") {
       logout().then(() => {
         router.replace("/login");
       });
     }
+
   }, [data]);
 
   if (isLoading) {

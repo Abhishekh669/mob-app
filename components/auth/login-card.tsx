@@ -138,6 +138,22 @@ export default function LoginCard() {
 
                     <Text style={styles.adminContact}>Need access? Contact your administrator</Text>
                 </View>
+
+                {/* Already logged in note */}
+                <View style={styles.alreadyLoggedIn}>
+                    <Text style={styles.alreadyLoggedInText}>Already logged in?</Text>
+                    <Pressable
+                        onPress={() => router.replace("/(main)/home")}
+                        style={({ pressed }) => [
+                            styles.refreshButton,
+                            pressed && { opacity: 0.8 },
+                        ]}
+                    >
+                        <Ionicons name="refresh-outline" size={16} color="#dc2626" />
+                        <Text style={styles.refreshButtonText}>Go to Dashboard</Text>
+                    </Pressable>
+                </View>
+
             </ScrollView>
         </KeyboardAvoidingView>
     );
@@ -212,4 +228,29 @@ const styles = StyleSheet.create({
     buttonDisabled: { opacity: 0.7 },
     buttonText: { color: "#fff", fontWeight: "600", fontSize: 16 },
     adminContact: { textAlign: "center", fontSize: 12, color: "#64748b" },
+    alreadyLoggedIn: {
+        alignItems: "center",
+        marginTop: 24,
+        gap: 8,
+    },
+    alreadyLoggedInText: {
+        fontSize: 13,
+        color: "#94a3b8",
+    },
+    refreshButton: {
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 6,
+        paddingVertical: 10,
+        paddingHorizontal: 20,
+        borderRadius: 10,
+        borderWidth: 1,
+        borderColor: "#fca5a5",
+        backgroundColor: "#fff5f5",
+    },
+    refreshButtonText: {
+        fontSize: 13,
+        fontWeight: "600",
+        color: "#dc2626",
+    },
 });
