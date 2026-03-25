@@ -40,10 +40,10 @@ const C = {
 // ─── Tab Routes (bottom nav) ───────────────────────────────────────────────────
 const ROUTES = [
   { label: "Home", path: "/(main)/home", icon: "home-outline", activeIcon: "home", tabIcon: "home-outline", tabActiveIcon: "home" },
+  {label: "Approval",path: "/(main)/approval-requests",icon: "checkmark-done-outline",activeIcon: "checkmark-done",tabIcon: "checkmark-done-outline",tabActiveIcon: "checkmark-done"},
   { label: "Orders", path: "/(main)/order-request", icon: "receipt-outline", activeIcon: "receipt", tabIcon: "receipt-outline", tabActiveIcon: "receipt" },
   { label: "Kitchen", path: "/(main)/orders-status", icon: "flame-outline", activeIcon: "flame", tabIcon: "flame-outline", tabActiveIcon: "flame" },
   { label: "Attendance", path: "/(main)/attendance", icon: "calendar-outline", activeIcon: "calendar", tabIcon: "calendar-outline", tabActiveIcon: "calendar" },
-  {label: "Approval",path: "/(main)/approval-requests",icon: "checkmark-done-outline",activeIcon: "checkmark-done",tabIcon: "checkmark-done-outline",tabActiveIcon: "checkmark-done"}
 ];
 
 // ─── Dummy sidebar-only routes (no real navigation) ───────────────────────────

@@ -1,5 +1,5 @@
 import { useGetOrderRequestsBySessionId } from '@/hooks/tanstack/query-hook/order/use-get-order-by-session-id';
-import { useLocalSearchParams, useRouter } from 'expo-router'
+import { Redirect, useLocalSearchParams, useRouter } from 'expo-router'
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import {
   Text,
@@ -20,9 +20,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CustomerOrderRequest, OrderItemType, orderStatus } from '@/utils/types/order/order.types';
 import { approveOrder } from '@/utils/actions/order/order.post';
-import { deleteTableSession } from '@/utils/actions/order/order.delete'; // ← import delete action
+import { deleteTableSession } from '@/utils/actions/order/order.delete';
 import Toast from 'react-native-toast-message';
-import { QueryClient, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 
 interface ApproveOrderItem {
   id: string;
@@ -43,6 +43,7 @@ export interface ApproveOrderType {
   note?: string | null;
   table_number: number;
   order_menu_items: ApproveOrderItem[];
+  deleted_order_items: string[]
 }
 
 interface EditedItem extends OrderItemType {
@@ -55,21 +56,21 @@ const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get('window');
 
 // ─── Colour tokens ────────────────────────────────────────────────────────────
 const C = {
-  brand:      '#FF6B35',
+  brand: '#FF6B35',
   brandLight: '#FFF0EB',
-  brandMid:   '#FFD5C2',
-  success:    '#16A34A',
-  successBg:  '#DCFCE7',
-  danger:     '#DC2626',
-  dangerBg:   '#FEE2E2',
-  info:       '#2563EB',
-  infoBg:     '#DBEAFE',
-  bg:         '#F5F5F0',
-  surface:    '#FFFFFF',
-  border:     '#E8E6E0',
-  text:       '#1A1A1A',
-  textMid:    '#4B4B4B',
-  textMuted:  '#9A9A9A',
+  brandMid: '#FFD5C2',
+  success: '#16A34A',
+  successBg: '#DCFCE7',
+  danger: '#DC2626',
+  dangerBg: '#FEE2E2',
+  info: '#2563EB',
+  infoBg: '#DBEAFE',
+  bg: '#F5F5F0',
+  surface: '#FFFFFF',
+  border: '#E8E6E0',
+  text: '#1A1A1A',
+  textMid: '#4B4B4B',
+  textMuted: '#9A9A9A',
 };
 
 function TableSessionPage() {
@@ -87,10 +88,9 @@ function TableSessionPage() {
   const [editedNote, setEditedNote] = useState('');
   const [expandedItemId, setExpandedItemId] = useState<string | null>(null);
   const [isApproving, setIsApproving] = useState(false);
-  const [isDeletingSession, setIsDeletingSession] = useState(false); // ← new state
+  const [isDeletingSession, setIsDeletingSession] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
-  // Item scale animations for quantity press feedback
   const itemScales = useRef<Record<string, Animated.Value>>({});
   const slideAnim = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
@@ -100,7 +100,10 @@ function TableSessionPage() {
   const { data, isLoading, isError, refetch } = useGetOrderRequestsBySessionId(tableSessionId, true);
   const orderRequest = data?.order_request as CustomerOrderRequest | undefined;
 
-  // ── Init edited state ───────────────────────────────────────────────────────
+  if(!isLoading && isError){
+    return <Redirect href={"/(main)/order-request"}/>
+  }
+
   useEffect(() => {
     if (!orderRequest) return;
     const init: Record<string, EditedItem> = {};
@@ -113,7 +116,6 @@ function TableSessionPage() {
     setEditedNote(orderRequest.note || '');
   }, [orderRequest?.id]);
 
-  // ── Modal animation ─────────────────────────────────────────────────────────
   const openModal = useCallback(() => {
     setShowSummaryModal(true);
     Animated.parallel([
@@ -130,7 +132,6 @@ function TableSessionPage() {
     ]).start(() => setShowSummaryModal(false));
   }, [isApproving]);
 
-  // ── Item scale helper ───────────────────────────────────────────────────────
   const getItemScale = (id: string) => {
     if (!itemScales.current[id]) {
       itemScales.current[id] = new Animated.Value(1);
@@ -146,7 +147,6 @@ function TableSessionPage() {
     ]).start();
   };
 
-  // ── Handlers ────────────────────────────────────────────────────────────────
   const handleManualRefresh = async () => {
     setRefreshing(true);
     try {
@@ -159,7 +159,6 @@ function TableSessionPage() {
     }
   };
 
-  // ── Delete session handler ───────────────────────────────────────────────────
   const handleDeleteSession = () => {
     if (isDeletingSession || isApproving) return;
     Alert.alert(
@@ -171,7 +170,7 @@ function TableSessionPage() {
           text: 'Delete',
           style: 'destructive',
           onPress: async () => {
-            if(!orderRequest?.customer_phone || !orderRequest?.table_session?.table_number)return;
+            if (!orderRequest?.customer_phone || !orderRequest?.table_session?.table_number) return;
             setIsDeletingSession(true);
             try {
               const res = await deleteTableSession(tableSessionId, orderRequest.customer_phone, orderRequest.table_session.table_number);
@@ -181,8 +180,7 @@ function TableSessionPage() {
                   text1: res.message || 'Session deleted successfully',
                   visibilityTime: 2000,
                 });
-                queryClient.invalidateQueries({queryKey : ["get-order-requests"]})
-                
+                queryClient.invalidateQueries({ queryKey: ["get-order-requests"] })
                 setTimeout(() => {
                   router.replace('/(main)/order-request');
                 }, 400);
@@ -284,11 +282,9 @@ function TableSessionPage() {
     setIsApproving(true);
     try {
       const itemsToApprove = Object.values(editedItems).filter(i => !i.isDeleted);
-      if (!itemsToApprove.length) {
-        Toast.show({ type: 'info', text1: 'No items to approve', visibilityTime: 2000 });
-        closeModal();
-        return;
-      }
+      // ✅ FIX: removed early-return when itemsToApprove is empty —
+      // allow approving with zero items (e.g. all items removed or order has no items)
+
       const orderMenuItems: ApproveOrderItem[] = itemsToApprove.map(item => ({
         id: item.id,
         order_id: item.order_id,
@@ -298,6 +294,8 @@ function TableSessionPage() {
         has_changed: item.isModified || false,
         created_at: new Date().toISOString(),
       }));
+      const deletedOrderItemIds = deletedItems.map(item => item.id);
+
       const payload: ApproveOrderType = {
         id: orderRequest.id,
         table_session_id: orderRequest.table_session.id,
@@ -307,12 +305,14 @@ function TableSessionPage() {
         note: editedNote || null,
         waiter_id: null,
         order_menu_items: orderMenuItems,
+        deleted_order_items: deletedOrderItemIds,
       };
+
       const res = await approveOrder(payload);
       if (res.message && res.success) {
         Toast.show({ type: 'success', text1: res.message || 'Order approved!', visibilityTime: 2000 });
         closeModal();
-        queryClient.invalidateQueries({queryKey : ["get-orders-status"]})
+        queryClient.invalidateQueries({ queryKey: ["get-orders-status"] })
         setTimeout(() => {
           refetch();
           router.replace('/(main)/orders-status');
@@ -328,35 +328,34 @@ function TableSessionPage() {
   };
 
   // ── Derived values ───────────────────────────────────────────────────────────
-  const visibleItems  = Object.values(editedItems).filter(i => !i.isDeleted);
-  const deletedItems  = Object.values(editedItems).filter(i => i.isDeleted);
+  const visibleItems = Object.values(editedItems).filter(i => !i.isDeleted);
+  const deletedItems = Object.values(editedItems).filter(i => i.isDeleted);
   const modifiedCount = visibleItems.filter(i => i.isModified).length;
-  const grandTotal    = visibleItems.reduce((s, i) => s + i.price * i.quantity, 0);
+  const grandTotal = visibleItems.reduce((s, i) => s + i.price * i.quantity, 0);
   const originalTotal = orderRequest?.order_items.reduce((s, i) => s + i.price * i.quantity, 0) ?? 0;
-  const hasChanges    = modifiedCount > 0 || deletedItems.length > 0 ||
+  const hasChanges = modifiedCount > 0 || deletedItems.length > 0 ||
     editedCustomerName !== (orderRequest?.customer_name || '') ||
     editedCustomerPhone !== (orderRequest?.customer_phone || '') ||
     editedNote !== (orderRequest?.note || '');
 
   const fmtPrice = (n: number) => `₹${n.toFixed(2)}`;
-  const fmtDate  = (s: string) => new Date(s).toLocaleDateString([], { year: 'numeric', month: 'short', day: 'numeric' });
-  const fmtTime  = (s: string) => new Date(s).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const fmtDate = (s: string) => new Date(s).toLocaleDateString([], { year: 'numeric', month: 'short', day: 'numeric' });
+  const fmtTime = (s: string) => new Date(s).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
   const STATUS_CONFIG: Record<string, { label: string; bg: string; text: string }> = {
-    'approved':     { label: 'Approved',    bg: C.successBg, text: C.success },
-    'not-approved': { label: 'Pending',     bg: '#FFF7ED',   text: '#9A3412' },
-    'progress':     { label: 'In Progress', bg: C.infoBg,    text: C.info   },
-    'completed':    { label: 'Completed',   bg: C.successBg, text: C.success },
-    'cancelled':    { label: 'Cancelled',   bg: C.dangerBg,  text: C.danger  },
+    'approved': { label: 'Approved', bg: C.successBg, text: C.success },
+    'not-approved': { label: 'Pending', bg: '#FFF7ED', text: '#9A3412' },
+    'progress': { label: 'In Progress', bg: C.infoBg, text: C.info },
+    'completed': { label: 'Completed', bg: C.successBg, text: C.success },
+    'cancelled': { label: 'Cancelled', bg: C.dangerBg, text: C.danger },
   };
 
   const TABLE_STATUS: Record<string, { bg: string; text: string }> = {
-    occupied: { bg: '#FFF0EB', text: C.brand   },
-    empty:    { bg: C.successBg, text: C.success },
-    booked:   { bg: C.infoBg,   text: C.info   },
+    occupied: { bg: '#FFF0EB', text: C.brand },
+    empty: { bg: C.successBg, text: C.success },
+    booked: { bg: C.infoBg, text: C.info },
   };
 
-  // ── Loading / error ─────────────────────────────────────────────────────────
   if (isLoading) {
     return (
       <View style={s.center}>
@@ -383,9 +382,8 @@ function TableSessionPage() {
 
   const { table_session } = orderRequest;
   const tableStatus = TABLE_STATUS[table_session.status] ?? { bg: '#F3F4F6', text: C.textMid };
-  const orderSt     = STATUS_CONFIG[orderRequest.status] ?? STATUS_CONFIG['not-approved'];
+  const orderSt = STATUS_CONFIG[orderRequest.status] ?? STATUS_CONFIG['not-approved'];
 
-  // ────────────────────────────────────────────────────────────────────────────
   return (
     <>
       <StatusBar barStyle="light-content" />
@@ -417,7 +415,6 @@ function TableSessionPage() {
               >
                 <Ionicons name={refreshing ? 'hourglass' : 'refresh'} size={18} color={C.brand} />
               </TouchableOpacity>
-              {/* ── Delete session button ── */}
               <TouchableOpacity
                 style={s.deleteSessionBtn}
                 onPress={handleDeleteSession}
@@ -431,7 +428,6 @@ function TableSessionPage() {
             </View>
           </View>
 
-          {/* Meta row */}
           <View style={s.heroMeta}>
             <View style={s.heroMetaItem}>
               <Ionicons name="time-outline" size={13} color="rgba(255,255,255,0.7)" />
@@ -442,7 +438,6 @@ function TableSessionPage() {
             </View>
           </View>
 
-          {/* Change chips */}
           {(modifiedCount > 0 || deletedItems.length > 0) && (
             <View style={s.chips}>
               {modifiedCount > 0 && (
@@ -539,7 +534,9 @@ function TableSessionPage() {
             {visibleItems.length === 0 ? (
               <View style={s.emptyState}>
                 <Ionicons name="restaurant-outline" size={36} color={C.textMuted} />
-                <Text style={s.emptyStateTxt}>All items removed</Text>
+                <Text style={s.emptyStateTxt}>
+                  {Object.keys(editedItems).length === 0 ? 'No items in this order' : 'All items removed'}
+                </Text>
               </View>
             ) : (
               visibleItems.map((item, idx) => {
@@ -550,7 +547,6 @@ function TableSessionPage() {
                   <Animated.View key={item.id} style={{ transform: [{ scale: scaleAnim }] }}>
                     {idx > 0 && <View style={s.divider} />}
                     <View style={s.itemRow}>
-                      {/* Thumbnail */}
                       <TouchableOpacity
                         onPress={() => setExpandedItemId(isExpanded ? null : item.id)}
                         activeOpacity={0.8}
@@ -568,7 +564,6 @@ function TableSessionPage() {
                         )}
                       </TouchableOpacity>
 
-                      {/* Details */}
                       <View style={s.itemContent}>
                         <TouchableOpacity
                           onPress={() => setExpandedItemId(isExpanded ? null : item.id)}
@@ -584,7 +579,6 @@ function TableSessionPage() {
                         </TouchableOpacity>
 
                         <View style={s.itemControls}>
-                          {/* Qty stepper */}
                           <View style={s.stepper}>
                             <TouchableOpacity
                               style={s.stepBtn}
@@ -625,13 +619,12 @@ function TableSessionPage() {
                       </View>
                     </View>
 
-                    {/* Expanded detail */}
                     {isExpanded && (
                       <View style={s.expandedDetail}>
                         <DetailRow label="Unit price" value={fmtPrice(item.price)} />
-                        <DetailRow label="Item ID"    value={item.id.slice(0, 8) + '…'} />
-                        <DetailRow label="Status"     value={item.status} accent={STATUS_CONFIG[item.status]?.text} />
-                        <DetailRow label="Added"      value={`${fmtDate(item.created_at)} · ${fmtTime(item.created_at)}`} />
+                        <DetailRow label="Item ID" value={item.id.slice(0, 8) + '…'} />
+                        <DetailRow label="Status" value={item.status} accent={STATUS_CONFIG[item.status]?.text} />
+                        <DetailRow label="Added" value={`${fmtDate(item.created_at)} · ${fmtTime(item.created_at)}`} />
                       </View>
                     )}
                   </Animated.View>
@@ -639,7 +632,6 @@ function TableSessionPage() {
               })
             )}
 
-            {/* Removed items strip */}
             {deletedItems.length > 0 && (
               <View style={s.removedStrip}>
                 <View style={s.removedHeader}>
@@ -664,28 +656,26 @@ function TableSessionPage() {
               </View>
             )}
 
-            {/* Total row */}
-            {visibleItems.length > 0 && (
-              <View style={s.totalRow}>
-                <View>
-                  <Text style={s.totalLabel}>Total</Text>
-                  {showOriginalData && grandTotal !== originalTotal && (
-                    <Text style={s.originalTotal}>was {fmtPrice(originalTotal)}</Text>
-                  )}
-                </View>
-                <Text style={[
-                  s.totalAmt,
-                  grandTotal > originalTotal && { color: C.success },
-                  grandTotal < originalTotal && { color: C.danger },
-                ]}>
-                  {fmtPrice(grandTotal)}
-                </Text>
+            {/* Total row — show even when 0 items so the card doesn't look broken */}
+            <View style={s.totalRow}>
+              <View>
+                <Text style={s.totalLabel}>Total</Text>
+                {showOriginalData && grandTotal !== originalTotal && (
+                  <Text style={s.originalTotal}>was {fmtPrice(originalTotal)}</Text>
+                )}
               </View>
-            )}
+              <Text style={[
+                s.totalAmt,
+                grandTotal > originalTotal && { color: C.success },
+                grandTotal < originalTotal && { color: C.danger },
+              ]}>
+                {fmtPrice(grandTotal)}
+              </Text>
+            </View>
           </View>
         </View>
 
-        {/* ── Footer as part of scroll content ── */}
+        {/* ── Footer ── */}
         <View style={s.footerContainer}>
           <View style={s.footerContent}>
             <TouchableOpacity
@@ -695,18 +685,23 @@ function TableSessionPage() {
             >
               <Ionicons name={showOriginalData ? 'eye-off-outline' : 'eye-outline'} size={18} color={C.textMid} />
             </TouchableOpacity>
+
+            {/* ✅ FIX: removed `visibleItems.length === 0` from disabled condition */}
             <TouchableOpacity
-              style={[s.footerPrimary, (isApproving || visibleItems.length === 0) && s.footerPrimaryDisabled]}
+              style={[s.footerPrimary, isApproving && s.footerPrimaryDisabled]}
               onPress={openModal}
-              disabled={isApproving || visibleItems.length === 0}
+              disabled={isApproving}
               activeOpacity={0.85}
             >
               {isApproving
                 ? <ActivityIndicator size="small" color="#fff" />
                 : <>
-                    <Ionicons name="checkmark-circle-outline" size={20} color="#fff" />
-                    <Text style={s.footerPrimaryTxt}>Review & Approve · {visibleItems.length} items</Text>
-                  </>
+                  <Ionicons name="checkmark-circle-outline" size={20} color="#fff" />
+                  <Text style={s.footerPrimaryTxt}>
+                    Review & Approve
+                    {visibleItems.length > 0 ? ` · ${visibleItems.length} items` : ''}
+                  </Text>
+                </>
               }
             </TouchableOpacity>
           </View>
@@ -717,14 +712,11 @@ function TableSessionPage() {
       {/* ── Summary bottom sheet ─────────────────────────────────────────────── */}
       {showSummaryModal && (
         <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
-          {/* Backdrop */}
           <Animated.View style={[s.backdrop, { opacity: backdropOpacity }]}>
             <TouchableOpacity style={StyleSheet.absoluteFill} onPress={closeModal} activeOpacity={1} />
           </Animated.View>
 
-          {/* Sheet */}
           <Animated.View style={[s.sheet, { transform: [{ translateY: slideAnim }] }]}>
-            {/* Handle + header */}
             <View style={s.sheetHandle} />
             <View style={s.sheetHeader}>
               <Text style={s.sheetTitle}>Order Summary</Text>
@@ -734,10 +726,9 @@ function TableSessionPage() {
             </View>
 
             <ScrollView style={s.sheetBody} showsVerticalScrollIndicator={false} bounces={false}>
-              {/* Table / customer summary */}
               <View style={s.summaryBlock}>
                 <SummaryRow icon="restaurant-outline" label="Table" value={`#${table_session.table_number}`} />
-                <SummaryRow icon="person-outline"     label="Customer" value={editedCustomerName || 'Guest'} />
+                <SummaryRow icon="person-outline" label="Customer" value={editedCustomerName || 'Guest'} />
                 {editedCustomerPhone ? <SummaryRow icon="call-outline" label="Phone" value={editedCustomerPhone} /> : null}
                 {editedNote ? (
                   <View style={s.noteBlock}>
@@ -747,28 +738,32 @@ function TableSessionPage() {
                 ) : null}
               </View>
 
-              {/* Items */}
               <View style={s.summaryBlock}>
                 <Text style={s.summaryBlockTitle}>Items</Text>
-                {visibleItems.map(item => (
-                  <View key={item.id} style={s.summaryItem}>
-                    <View style={s.summaryItemLeft}>
-                      <Text style={s.summaryItemName} numberOfLines={1}>{item.menu_name}</Text>
-                      <Text style={s.summaryItemMeta}>
-                        {item.quantity % 1 === 0 ? item.quantity : item.quantity.toFixed(1)} × {fmtPrice(item.price)}
-                        {item.isModified && <Text style={s.summaryItemWas}>  (was {item.originalQuantity})</Text>}
-                      </Text>
+                {visibleItems.length === 0 ? (
+                  <Text style={[s.summaryItemMeta, { paddingVertical: 8, fontStyle: 'italic' }]}>
+                    No items — approving with empty order
+                  </Text>
+                ) : (
+                  visibleItems.map(item => (
+                    <View key={item.id} style={s.summaryItem}>
+                      <View style={s.summaryItemLeft}>
+                        <Text style={s.summaryItemName} numberOfLines={1}>{item.menu_name}</Text>
+                        <Text style={s.summaryItemMeta}>
+                          {item.quantity % 1 === 0 ? item.quantity : item.quantity.toFixed(1)} × {fmtPrice(item.price)}
+                          {item.isModified && <Text style={s.summaryItemWas}>  (was {item.originalQuantity})</Text>}
+                        </Text>
+                      </View>
+                      <Text style={s.summaryItemTotal}>{fmtPrice(item.price * item.quantity)}</Text>
                     </View>
-                    <Text style={s.summaryItemTotal}>{fmtPrice(item.price * item.quantity)}</Text>
-                  </View>
-                ))}
+                  ))
+                )}
                 <View style={s.summaryTotalRow}>
                   <Text style={s.summaryTotalLabel}>Grand total</Text>
                   <Text style={s.summaryTotalAmt}>{fmtPrice(grandTotal)}</Text>
                 </View>
               </View>
 
-              {/* Deleted items in summary */}
               {deletedItems.length > 0 && (
                 <View style={[s.summaryBlock, s.removedBlock]}>
                   <Text style={[s.summaryBlockTitle, { color: C.danger }]}>Removed</Text>
@@ -784,7 +779,6 @@ function TableSessionPage() {
                 </View>
               )}
 
-              {/* Notice */}
               <View style={s.notice}>
                 <Ionicons name="information-circle-outline" size={16} color={C.brand} />
                 <Text style={s.noticeTxt}>
@@ -793,7 +787,6 @@ function TableSessionPage() {
               </View>
             </ScrollView>
 
-            {/* Sheet footer accounts for safe area bottom */}
             <View style={[s.sheetFooter, { paddingBottom: insets.bottom > 0 ? insets.bottom : 16 }]}>
               <TouchableOpacity
                 style={[s.sheetCancel, isApproving && s.btnDisabled]}
@@ -811,9 +804,9 @@ function TableSessionPage() {
                 {isApproving
                   ? <ActivityIndicator size="small" color="#fff" />
                   : <>
-                      <Ionicons name="checkmark-circle" size={20} color="#fff" />
-                      <Text style={s.sheetConfirmTxt}>Approve Order</Text>
-                    </>
+                    <Ionicons name="checkmark-circle" size={20} color="#fff" />
+                    <Text style={s.sheetConfirmTxt}>Approve Order</Text>
+                  </>
                 }
               </TouchableOpacity>
             </View>
@@ -848,138 +841,102 @@ function SummaryRow({ icon, label, value }: { icon: string; label: string; value
 // ── Styles ───────────────────────────────────────────────────────────────────
 
 const s = StyleSheet.create({
-  root:  { flex: 1, backgroundColor: C.bg , padding : 10},
-  scrollContent: {
-    paddingBottom: 24,
-  },
+  root: { flex: 1, backgroundColor: C.bg, padding: 10 },
+  scrollContent: { paddingBottom: 24 },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: C.bg, padding: 32 },
 
-  // Loading / Error
   loadingLabel: { marginTop: 14, color: C.textMid, fontSize: 15, fontWeight: '500' },
-  iconCircle:   { width: 64, height: 64, borderRadius: 32, justifyContent: 'center', alignItems: 'center', marginBottom: 16 },
-  errTitle:     { fontSize: 18, fontWeight: '700', color: C.text, marginBottom: 6 },
-  errSub:       { fontSize: 12, color: C.textMuted, marginBottom: 20, fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace' },
-  retryBtn:     { backgroundColor: C.brand, paddingHorizontal: 28, paddingVertical: 12, borderRadius: 10 },
-  retryTxt:     { color: '#fff', fontWeight: '700', fontSize: 15 },
+  iconCircle: { width: 64, height: 64, borderRadius: 32, justifyContent: 'center', alignItems: 'center', marginBottom: 16 },
+  errTitle: { fontSize: 18, fontWeight: '700', color: C.text, marginBottom: 6 },
+  errSub: { fontSize: 12, color: C.textMuted, marginBottom: 20, fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace' },
+  retryBtn: { backgroundColor: C.brand, paddingHorizontal: 28, paddingVertical: 12, borderRadius: 10 },
+  retryTxt: { color: '#fff', fontWeight: '700', fontSize: 15 },
 
-  // Hero
-  hero:       { backgroundColor: C.brand, paddingTop: 20, paddingHorizontal: 20, paddingBottom: 20 },
-  heroTop:    { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 },
-  heroLabel:  { fontSize: 11, fontWeight: '700', color: 'rgba(255,255,255,0.6)', letterSpacing: 1.5, marginBottom: 2 },
-  heroTable:  { fontSize: 48, fontWeight: '800', color: '#fff', lineHeight: 52 },
-  heroRight:  { flexDirection: 'row', alignItems: 'center', gap: 8, paddingTop: 6 },
-  heroMeta:   { flexDirection: 'row', alignItems: 'center' },
+  hero: { backgroundColor: C.brand, paddingTop: 20, paddingHorizontal: 20, paddingBottom: 20 },
+  heroTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 },
+  heroLabel: { fontSize: 11, fontWeight: '700', color: 'rgba(255,255,255,0.6)', letterSpacing: 1.5, marginBottom: 2 },
+  heroTable: { fontSize: 48, fontWeight: '800', color: '#fff', lineHeight: 52 },
+  heroRight: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingTop: 6 },
+  heroMeta: { flexDirection: 'row', alignItems: 'center' },
   heroMetaItem: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-  heroMetaTxt:  { fontSize: 12, color: 'rgba(255,255,255,0.7)' },
-  chips:      { flexDirection: 'row', gap: 6, marginTop: 12 },
-  chip:       { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
-  chipTxt:    { fontSize: 11, color: '#fff', fontWeight: '600' },
+  heroMetaTxt: { fontSize: 12, color: 'rgba(255,255,255,0.7)' },
+  chips: { flexDirection: 'row', gap: 6, marginTop: 12 },
+  chip: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
+  chipTxt: { fontSize: 11, color: '#fff', fontWeight: '600' },
 
-  // Pill / dot
-  pill:    { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20, gap: 5 },
+  pill: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20, gap: 5 },
   pillTxt: { fontSize: 12, fontWeight: '600' },
-  dot:     { width: 6, height: 6, borderRadius: 3 },
+  dot: { width: 6, height: 6, borderRadius: 3 },
 
-  // Refresh btn
   refreshBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: C.brandLight, justifyContent: 'center', alignItems: 'center' },
+  deleteSessionBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(220,38,38,0.15)', justifyContent: 'center', alignItems: 'center' },
 
-  // Delete session btn  ← NEW
-  deleteSessionBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: 'rgba(220,38,38,0.15)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-
-  // Section
-  section:       { paddingHorizontal: 16, paddingTop: 20 },
-  sectionTitle:  { fontSize: 13, fontWeight: '700', color: C.textMid, letterSpacing: 0.8, marginBottom: 10, textTransform: 'uppercase' },
+  section: { paddingHorizontal: 16, paddingTop: 20 },
+  sectionTitle: { fontSize: 13, fontWeight: '700', color: C.textMid, letterSpacing: 0.8, marginBottom: 10, textTransform: 'uppercase' },
   sectionHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 10, gap: 8 },
-  countBadge:    { backgroundColor: C.brandLight, width: 22, height: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
+  countBadge: { backgroundColor: C.brandLight, width: 22, height: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
   countBadgeTxt: { fontSize: 11, fontWeight: '700', color: C.brand },
-  resetLink:     { marginLeft: 'auto', flexDirection: 'row', alignItems: 'center', gap: 3 },
-  resetLinkTxt:  { fontSize: 12, color: C.brand, fontWeight: '600' },
+  resetLink: { marginLeft: 'auto', flexDirection: 'row', alignItems: 'center', gap: 3 },
+  resetLinkTxt: { fontSize: 12, color: C.brand, fontWeight: '600' },
 
-  // Card
-  card: {
-    backgroundColor: C.surface,
-    borderRadius: 16,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: C.border,
-  },
+  card: { backgroundColor: C.surface, borderRadius: 16, overflow: 'hidden', borderWidth: 1, borderColor: C.border },
 
-  // Input rows
-  inputRow:       { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12 },
+  inputRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12 },
   inputRowBorder: { borderTopWidth: 1, borderTopColor: C.border },
-  inputIconWrap:  { width: 28 },
-  inputGroup:     { flex: 1 },
-  inputLabel:     { fontSize: 11, color: C.textMuted, fontWeight: '600', marginBottom: 3, letterSpacing: 0.5, textTransform: 'uppercase' },
-  input:          { fontSize: 15, color: C.text, fontWeight: '500', paddingVertical: 0 },
-  inputDisabled:  { color: C.textMuted },
-  textArea:       { minHeight: 60, paddingTop: 4 },
+  inputIconWrap: { width: 28 },
+  inputGroup: { flex: 1 },
+  inputLabel: { fontSize: 11, color: C.textMuted, fontWeight: '600', marginBottom: 3, letterSpacing: 0.5, textTransform: 'uppercase' },
+  input: { fontSize: 15, color: C.text, fontWeight: '500', paddingVertical: 0 },
+  inputDisabled: { color: C.textMuted },
+  textArea: { minHeight: 60, paddingTop: 4 },
 
-  // Divider
   divider: { height: 1, backgroundColor: C.border, marginHorizontal: 16 },
 
-  // Item row
-  itemRow:     { flexDirection: 'row', paddingHorizontal: 16, paddingVertical: 14 },
-  thumb:       { width: 56, height: 56, borderRadius: 10, overflow: 'hidden', marginRight: 12, position: 'relative' },
-  thumbImg:    { width: '100%', height: '100%' },
+  itemRow: { flexDirection: 'row', paddingHorizontal: 16, paddingVertical: 14 },
+  thumb: { width: 56, height: 56, borderRadius: 10, overflow: 'hidden', marginRight: 12, position: 'relative' },
+  thumbImg: { width: '100%', height: '100%' },
   thumbPlaceholder: { width: '100%', height: '100%', backgroundColor: '#F5F5F0', justifyContent: 'center', alignItems: 'center' },
   modifiedDot: { position: 'absolute', top: 4, right: 4, width: 8, height: 8, borderRadius: 4, backgroundColor: C.brand, borderWidth: 1, borderColor: '#fff' },
   itemContent: { flex: 1 },
   itemNameRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
-  itemName:    { fontSize: 15, fontWeight: '600', color: C.text, flex: 1, marginRight: 4 },
+  itemName: { fontSize: 15, fontWeight: '600', color: C.text, flex: 1, marginRight: 4 },
   itemControls: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
 
-  // Stepper
-  stepper:    { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  stepBtn:    { width: 28, height: 28, borderRadius: 8, backgroundColor: C.bg, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: C.border },
-  qtyBox:     { minWidth: 38, height: 28, borderRadius: 8, backgroundColor: C.bg, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 6, borderWidth: 1, borderColor: C.border },
+  stepper: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  stepBtn: { width: 28, height: 28, borderRadius: 8, backgroundColor: C.bg, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: C.border },
+  qtyBox: { minWidth: 38, height: 28, borderRadius: 8, backgroundColor: C.bg, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 6, borderWidth: 1, borderColor: C.border },
   qtyBoxModified: { backgroundColor: C.brandLight, borderColor: C.brand },
-  qtyTxt:        { fontSize: 13, fontWeight: '700', color: C.textMid },
+  qtyTxt: { fontSize: 13, fontWeight: '700', color: C.textMid },
   qtyTxtModified: { color: C.brand },
-  itemRight:    { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  itemPrice:    { fontSize: 15, fontWeight: '700', color: C.text },
-  deleteBtn:    { padding: 4 },
+  itemRight: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  itemPrice: { fontSize: 15, fontWeight: '700', color: C.text },
+  deleteBtn: { padding: 4 },
   originalQtyHint: { fontSize: 11, color: C.textMuted, marginTop: 4, fontStyle: 'italic' },
 
-  // Expanded detail
   expandedDetail: { backgroundColor: C.bg, marginHorizontal: 16, marginBottom: 12, borderRadius: 10, padding: 12, gap: 6 },
-  detailRow:   { flexDirection: 'row', justifyContent: 'space-between' },
+  detailRow: { flexDirection: 'row', justifyContent: 'space-between' },
   detailLabel: { fontSize: 12, color: C.textMuted },
   detailValue: { fontSize: 12, color: C.textMid, fontWeight: '500' },
 
-  // Removed strip
-  removedStrip:  { borderTopWidth: 1, borderTopColor: '#FEE2E2', backgroundColor: '#FFF8F8', marginTop: 4, padding: 12 },
+  removedStrip: { borderTopWidth: 1, borderTopColor: '#FEE2E2', backgroundColor: '#FFF8F8', marginTop: 4, padding: 12 },
   removedHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
-  removedTitle:  { fontSize: 12, fontWeight: '700', color: C.danger, textTransform: 'uppercase', letterSpacing: 0.5 },
+  removedTitle: { fontSize: 12, fontWeight: '700', color: C.danger, textTransform: 'uppercase', letterSpacing: 0.5 },
   restoreAllTxt: { fontSize: 12, color: C.brand, fontWeight: '600' },
-  removedItem:   { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 },
+  removedItem: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 },
   removedItemName: { flex: 1, fontSize: 13, color: C.textMid, textDecorationLine: 'line-through' },
-  removedItemQty:  { fontSize: 12, color: C.textMuted },
-  restoreBtn:    { flexDirection: 'row', alignItems: 'center', backgroundColor: C.brandLight, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10, gap: 3 },
-  restoreTxt:    { fontSize: 11, color: C.brand, fontWeight: '600' },
+  removedItemQty: { fontSize: 12, color: C.textMuted },
+  restoreBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: C.brandLight, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10, gap: 3 },
+  restoreTxt: { fontSize: 11, color: C.brand, fontWeight: '600' },
 
-  // Total
-  totalRow:    { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14, borderTopWidth: 1, borderTopColor: C.border },
-  totalLabel:  { fontSize: 14, fontWeight: '600', color: C.text },
+  totalRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14, borderTopWidth: 1, borderTopColor: C.border },
+  totalLabel: { fontSize: 14, fontWeight: '600', color: C.text },
   originalTotal: { fontSize: 11, color: C.textMuted, marginTop: 2 },
-  totalAmt:    { fontSize: 22, fontWeight: '800', color: C.brand },
+  totalAmt: { fontSize: 22, fontWeight: '800', color: C.brand },
 
-  // Empty
-  emptyState:    { paddingVertical: 40, alignItems: 'center', gap: 10 },
+  emptyState: { paddingVertical: 40, alignItems: 'center', gap: 10 },
   emptyStateTxt: { fontSize: 14, color: C.textMuted },
 
-  // Footer — now part of scroll content
-  footerContainer: {
-    marginTop: 24,
-    marginHorizontal: 16,
-    marginBottom: 8,
-  },
+  footerContainer: { marginTop: 24, marginHorizontal: 16, marginBottom: 8 },
   footerContent: {
     flexDirection: 'row',
     gap: 10,
@@ -989,41 +946,15 @@ const s = StyleSheet.create({
     borderWidth: 1,
     borderColor: C.border,
     ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.06,
-        shadowRadius: 8,
-      },
-      android: {
-        elevation: 4,
-      },
+      ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8 },
+      android: { elevation: 4 },
     }),
   },
-  footerSecondary: {
-    width: 46,
-    height: 46,
-    borderRadius: 12,
-    backgroundColor: C.bg,
-    borderWidth: 1,
-    borderColor: C.border,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  footerPrimary: {
-    flex: 1,
-    height: 46,
-    borderRadius: 12,
-    backgroundColor: C.brand,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-  },
+  footerSecondary: { width: 46, height: 46, borderRadius: 12, backgroundColor: C.bg, borderWidth: 1, borderColor: C.border, justifyContent: 'center', alignItems: 'center' },
+  footerPrimary: { flex: 1, height: 46, borderRadius: 12, backgroundColor: C.brand, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
   footerPrimaryDisabled: { opacity: 0.45 },
   footerPrimaryTxt: { fontSize: 15, fontWeight: '700', color: '#fff' },
 
-  // Bottom sheet
   backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.45)' },
   sheet: {
     position: 'absolute', left: 0, right: 0, bottom: 0,
@@ -1035,8 +966,8 @@ const s = StyleSheet.create({
   },
   sheetHandle: { width: 36, height: 4, borderRadius: 2, backgroundColor: C.border, alignSelf: 'center', marginTop: 10, marginBottom: 4 },
   sheetHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: C.border },
-  sheetTitle:  { fontSize: 17, fontWeight: '700', color: C.text },
-  sheetBody:   { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 4 },
+  sheetTitle: { fontSize: 17, fontWeight: '700', color: C.text },
+  sheetBody: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 4 },
   sheetFooter: { flexDirection: 'row', gap: 10, paddingHorizontal: 16, paddingTop: 12, borderTopWidth: 1, borderTopColor: C.border },
   sheetCancel: { flex: 1, height: 48, borderRadius: 12, backgroundColor: C.bg, borderWidth: 1, borderColor: C.border, alignItems: 'center', justifyContent: 'center' },
   sheetCancelTxt: { fontSize: 15, fontWeight: '600', color: C.textMid },
@@ -1044,27 +975,26 @@ const s = StyleSheet.create({
   sheetConfirmTxt: { fontSize: 15, fontWeight: '700', color: '#fff' },
   btnDisabled: { opacity: 0.45 },
 
-  // Summary blocks
   summaryBlock: { backgroundColor: C.bg, borderRadius: 12, padding: 14, marginBottom: 12 },
   summaryBlockTitle: { fontSize: 12, fontWeight: '700', color: C.textMid, textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 10 },
-  summaryRow:       { flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginBottom: 8 },
-  summaryRowLabel:  { fontSize: 13, color: C.textMuted, width: 68 },
-  summaryRowValue:  { flex: 1, fontSize: 13, fontWeight: '600', color: C.text },
-  noteBlock:        { flexDirection: 'row', gap: 6, alignItems: 'flex-start', paddingTop: 4, borderTopWidth: 1, borderTopColor: C.border, marginTop: 4 },
-  noteTxt:          { flex: 1, fontSize: 13, color: C.textMid, fontStyle: 'italic', lineHeight: 18 },
-  summaryItem:      { flexDirection: 'row', alignItems: 'center', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: C.border },
-  summaryItemLeft:  { flex: 1 },
-  summaryItemName:  { fontSize: 14, fontWeight: '600', color: C.text, marginBottom: 2 },
-  summaryItemMeta:  { fontSize: 12, color: C.textMuted },
-  summaryItemWas:   { fontStyle: 'italic' },
+  summaryRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginBottom: 8 },
+  summaryRowLabel: { fontSize: 13, color: C.textMuted, width: 68 },
+  summaryRowValue: { flex: 1, fontSize: 13, fontWeight: '600', color: C.text },
+  noteBlock: { flexDirection: 'row', gap: 6, alignItems: 'flex-start', paddingTop: 4, borderTopWidth: 1, borderTopColor: C.border, marginTop: 4 },
+  noteTxt: { flex: 1, fontSize: 13, color: C.textMid, fontStyle: 'italic', lineHeight: 18 },
+  summaryItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: C.border },
+  summaryItemLeft: { flex: 1 },
+  summaryItemName: { fontSize: 14, fontWeight: '600', color: C.text, marginBottom: 2 },
+  summaryItemMeta: { fontSize: 12, color: C.textMuted },
+  summaryItemWas: { fontStyle: 'italic' },
   summaryItemTotal: { fontSize: 14, fontWeight: '700', color: C.text },
-  summaryTotalRow:  { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: 12, marginTop: 4 },
-  summaryTotalLabel:{ fontSize: 14, fontWeight: '600', color: C.text },
-  summaryTotalAmt:  { fontSize: 20, fontWeight: '800', color: C.brand },
-  removedBlock:     { backgroundColor: '#FFF8F8' },
+  summaryTotalRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: 12, marginTop: 4 },
+  summaryTotalLabel: { fontSize: 14, fontWeight: '600', color: C.text },
+  summaryTotalAmt: { fontSize: 20, fontWeight: '800', color: C.brand },
+  removedBlock: { backgroundColor: '#FFF8F8' },
   summaryRemovedItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: '#FEE2E2' },
   summaryRemovedName: { flex: 1, fontSize: 13, color: C.textMid, textDecorationLine: 'line-through' },
-  notice:    { flexDirection: 'row', backgroundColor: C.brandLight, borderRadius: 12, padding: 14, gap: 10, marginBottom: 20, alignItems: 'flex-start' },
+  notice: { flexDirection: 'row', backgroundColor: C.brandLight, borderRadius: 12, padding: 14, gap: 10, marginBottom: 20, alignItems: 'flex-start' },
   noticeTxt: { flex: 1, fontSize: 13, color: C.textMid, lineHeight: 18 },
 });
 
