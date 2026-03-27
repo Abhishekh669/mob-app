@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "mob_app",
-    "slug": "mob_app",
+    "name": "DineX",
+    "slug": "dinex",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",

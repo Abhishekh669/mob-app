@@ -15,10 +15,11 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import Toast from "react-native-toast-message";
-import { createAttendaceLeave,  } from "@/utils/actions/attendance/attendance.post";
+import { createAttendaceLeave } from "@/utils/actions/attendance/attendance.post";
 import { useUserStore } from "@/utils/store/user/use-user-store";
 import { useQueryClient } from "@tanstack/react-query";
 import { cancelUserAttendanceRequest, UpdateUserAttendanceRequest } from "@/utils/actions/attendance/attendance.put";
+import { useRouter } from "expo-router";
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 const C = {
@@ -56,8 +57,6 @@ const statusColor = (s: string) => {
   if (s === "rejected") return { bg: C.redSoft,   text: C.red,   dot: C.red   };
   return                       { bg: C.amberSoft, text: C.amber,  dot: C.amber };
 };
-
-
 
 // ─── EditLeaveForm ────────────────────────────────────────────────────────────
 function EditLeaveForm({
@@ -521,6 +520,7 @@ function CreateLeaveForm({ onSuccess }: { onSuccess: () => void }) {
 export default function AttendancePage() {
   const { data, isLoading, refetch } = useGetTodayAttendance();
   const queryClient                  = useQueryClient();
+  const router                       = useRouter();
   const [refreshing,     setRefreshing]     = useState(false);
   const [showForm,       setShowForm]       = useState(false);
   const [isEditing,      setIsEditing]      = useState(false);
@@ -556,6 +556,10 @@ export default function AttendancePage() {
         },
       ]
     );
+  };
+
+  const navigateToLeaveHistory = () => {
+    router.push("/(main)/attendance/history");
   };
 
   const isAttendanceError = !data || data.status === "attendance_error" || data.success === false;
@@ -600,15 +604,28 @@ export default function AttendancePage() {
       <View style={s.header}>
         <View style={s.headerRow}>
           <Text style={s.headerTitle}>Attendance</Text>
-          <TouchableOpacity
-            style={[s.refreshBtn, refreshing && { opacity: 0.5 }]}
-            onPress={onRefresh}
-            disabled={refreshing}
-            activeOpacity={0.75}
-          >
-            <Ionicons name="refresh-outline" size={18} color={C.accent} />
-            <Text style={s.refreshBtnText}>Refresh</Text>
-          </TouchableOpacity>
+          <View style={s.headerActions}>
+            {/* Leave History Button */}
+            <TouchableOpacity
+              style={s.historyBtn}
+              onPress={navigateToLeaveHistory}
+              activeOpacity={0.75}
+            >
+              <Ionicons name="time-outline" size={18} color={C.accent} />
+              <Text style={s.historyBtnText}>History</Text>
+            </TouchableOpacity>
+            
+            {/* Refresh Button */}
+            <TouchableOpacity
+              style={[s.refreshBtn, refreshing && { opacity: 0.5 }]}
+              onPress={onRefresh}
+              disabled={refreshing}
+              activeOpacity={0.75}
+            >
+              <Ionicons name="refresh-outline" size={18} color={C.accent} />
+              <Text style={s.refreshBtnText}>Refresh</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         <View style={[
@@ -769,6 +786,9 @@ const s = StyleSheet.create({
   header:         { backgroundColor: C.card, paddingHorizontal: 18, paddingTop: 18, paddingBottom: 14, borderBottomWidth: 1.5, borderBottomColor: C.divider, marginBottom: 14 },
   headerRow:      { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 14 },
   headerTitle:    { fontSize: 24, fontWeight: "700", color: C.ink, letterSpacing: -0.5 },
+  headerActions:  { flexDirection: "row", gap: 8 },
+  historyBtn:     { flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: C.accentSoft, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999, borderWidth: 1, borderColor: C.accentMid },
+  historyBtnText: { fontSize: 12, color: C.accent, fontWeight: "600" },
   refreshBtn:     { flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: C.accentSoft, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999, borderWidth: 1, borderColor: C.accentMid },
   refreshBtnText: { fontSize: 12, color: C.accent, fontWeight: "600" },
   statusStrip:    { flexDirection: "row", alignItems: "center", gap: 8, borderRadius: 12, borderWidth: 1, paddingHorizontal: 14, paddingVertical: 12 },

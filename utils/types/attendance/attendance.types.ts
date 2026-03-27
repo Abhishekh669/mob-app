@@ -1,3 +1,5 @@
+import { ExpoRoot } from "expo-router";
+
 export interface CreateAttendanceLeave {
     employee_id : string;
     start_date : Date;
@@ -31,4 +33,28 @@ export interface UpdateAttendaceRequest {
    start_date : Date;
    end_date : Date;
    message : string;
+}
+
+export interface AttendanceLeaveQuery {
+    fromDate ?: Date;
+    toDate ?: Date;
+    limit ?: number;
+    page ?: number;
+    status ?: LeaveStatus
+}
+
+
+export  interface AttendanceLeaveByUserStats {
+  total_requests : number;
+  pending_requests : number;
+  approved_requests : number;
+  rejected_requests : number;
+}
+
+export interface AttendanceLeaveByUserResponse {
+  requests : AttendanceLeaveResponse[],
+  total : number;
+  has_more : boolean;
+  next_offset : number;
+  stats : AttendanceLeaveByUserStats
 }
