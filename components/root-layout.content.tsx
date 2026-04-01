@@ -12,7 +12,6 @@ export default function RootLayoutContent() {
   const router = useRouter();
   const { setUser, logout } = useUserStore();
   const { data, isLoading, isError, error } = useGetUserFromToken();
-  console.log("this is data  : ", data, isError, error)
 
   useEffect(() => {
     if (isLoading || !data) return;
@@ -29,7 +28,7 @@ export default function RootLayoutContent() {
 
     if (data.status === "unauthenticated") {
       logout().then(() => {
-        router.replace("/login");
+        router.replace("/(auth)/login");
       });
     }
 

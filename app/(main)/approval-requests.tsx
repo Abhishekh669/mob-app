@@ -18,6 +18,7 @@ import { Ionicons } from '@expo/vector-icons'
 import Toast from 'react-native-toast-message'
 import { useQueryClient } from '@tanstack/react-query'
 import { deleteApprovalRequest } from '@/utils/actions/approval-request/approval.delete'
+import { serializableMappingCache } from 'react-native-worklets'
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 const C = {
@@ -76,6 +77,7 @@ function RequestCard({
     if (res.success) {
       Toast.show({ type: 'success', text1: `Table ${fields.table_number} approved`, visibilityTime: 1500 })
       queryClient.invalidateQueries({queryKey : ["get-approval-requests"]})
+      await new Promise(resolve => setTimeout(resolve, 1000))
       setEditing(false)
       onApproved()
     } else {
