@@ -836,7 +836,7 @@ const handleApprove = async () => {
     if (res.success) {
       Toast.show({ type: 'success', text1: res.message || 'Order approved!', visibilityTime: 2000 });
       closeModal();
-      queryClient.invalidateQueries({ queryKey: ["get-orders-status"] });
+      queryClient.invalidateQueries({ queryKey: ["get-order-requests"] });
       setTimeout(() => {
         refetch();
         router.replace('/(main)/orders-status');
