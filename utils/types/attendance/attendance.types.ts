@@ -58,3 +58,21 @@ export interface AttendanceLeaveByUserResponse {
   next_offset : number;
   stats : AttendanceLeaveByUserStats
 }
+
+export type AttendanceStat =  | "present"
+  | "absent"
+  | "late"
+  | "half_day"
+  | "leave";
+
+export interface Attendance {
+  id: string;
+  employee_id: string;
+  work_date: string; // ISO date (e.g., "2026-04-18")
+  check_in_time?: string | null;
+  check_out_time?: string | null;
+  need_review: boolean;
+  status: AttendanceStat;
+  created_at: string;
+  updated_at: string;
+}

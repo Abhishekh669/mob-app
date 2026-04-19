@@ -2,6 +2,7 @@
 import RootLayoutContent from "@/components/root-layout.content";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import React from "react";
+import Toast from "react-native-toast-message";
 
 const queryClient = new QueryClient();
 
@@ -9,6 +10,7 @@ export default function RootWrapper() {
   return (
     <QueryClientProvider client={queryClient}>
       <RootLayoutContent />
+       <Toast />
     </QueryClientProvider>
   );
 }

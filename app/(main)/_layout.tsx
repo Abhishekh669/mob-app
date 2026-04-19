@@ -1,5 +1,8 @@
+import { useStaffAlertsSync } from "@/hooks/use-staff-alerts-sync";
 import { useUserStore } from "@/utils/store/user/use-user-store";
-import { Slot, usePathname, useRouter } from "expo-router";
+import { useStaffAlertsStore } from "@/utils/store/staff-alerts/use-staff-alerts-store";
+import type { StaffAlertChannel } from "@/utils/store/staff-alerts/use-staff-alerts-store";
+import { RelativePathString, Slot, usePathname, useRouter } from "expo-router";
 import React, { useMemo, useRef, useEffect, useState, useCallback } from "react";
 import {
   View,
@@ -17,6 +20,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { RemoveUserToken } from "@/utils/storage/user.auth.storage";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useGetRestaurantInformation } from "@/hooks/tanstack/query-hook/setting/use-get-restaurant-info";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const SIDEBAR_WIDTH = Math.min(300, SCREEN_WIDTH * 0.82);
@@ -38,21 +42,49 @@ const C = {
 };
 
 // ─── Tab Routes (bottom nav) ───────────────────────────────────────────────────
-const ROUTES = [
+const ROUTES: Array<{
+  label: string;
+  path: string;
+  icon: string;
+  activeIcon: string;
+  tabIcon: string;
+  tabActiveIcon: string;
+  staffBadge?: StaffAlertChannel;
+}> = [
   { label: "Home", path: "/(main)/home", icon: "home-outline", activeIcon: "home", tabIcon: "home-outline", tabActiveIcon: "home" },
-  {label: "Approval",path: "/(main)/approval-requests",icon: "checkmark-done-outline",activeIcon: "checkmark-done",tabIcon: "checkmark-done-outline",tabActiveIcon: "checkmark-done"},
-  { label: "Orders", path: "/(main)/order-request", icon: "receipt-outline", activeIcon: "receipt", tabIcon: "receipt-outline", tabActiveIcon: "receipt" },
-  { label: "Kitchen", path: "/(main)/orders-status", icon: "flame-outline", activeIcon: "flame", tabIcon: "flame-outline", tabActiveIcon: "flame" },
+  {
+    label: "Approval",
+    path: "/(main)/approval-requests",
+    icon: "checkmark-done-outline",
+    activeIcon: "checkmark-done",
+    tabIcon: "checkmark-done-outline",
+    tabActiveIcon: "checkmark-done",
+    staffBadge: "approval",
+  },
+  {
+    label: "Orders",
+    path: "/(main)/order-request",
+    icon: "receipt-outline",
+    activeIcon: "receipt",
+    tabIcon: "receipt-outline",
+    tabActiveIcon: "receipt",
+    staffBadge: "orderRequest",
+  },
+  {
+    label: "Kitchen",
+    path: "/(main)/orders-status",
+    icon: "flame-outline",
+    activeIcon: "flame",
+    tabIcon: "flame-outline",
+    tabActiveIcon: "flame",
+    staffBadge: "ordersStatus",
+  },
   { label: "Attendance", path: "/(main)/attendance", icon: "calendar-outline", activeIcon: "calendar", tabIcon: "calendar-outline", tabActiveIcon: "calendar" },
 ];
 
 // ─── Dummy sidebar-only routes (no real navigation) ───────────────────────────
 const SIDEBAR_DUMMY_ROUTES = [
-  { label: "Dashboard", icon: "grid-outline" },
-  { label: "Reports", icon: "bar-chart-outline" },
-  { label: "Inventory", icon: "cube-outline" },
-  { label: "Staff", icon: "people-outline" },
-  { label: "Settings", icon: "settings-outline" },
+  { label: "Settings", icon: "settings-outline", path: "/(main)/setting" },
 ];
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
@@ -72,12 +104,15 @@ const SidebarDummyItem = ({
   item: typeof SIDEBAR_DUMMY_ROUTES[0];
 }) => {
   const scale = useRef(new Animated.Value(1)).current;
+  const router = useRouter();
 
   const handlePress = () => {
     Animated.sequence([
       Animated.timing(scale, { toValue: 0.95, duration: 80, useNativeDriver: true }),
       Animated.timing(scale, { toValue: 1, duration: 120, useNativeDriver: true }),
     ]).start();
+    const path = item.path as RelativePathString;
+    router.push(path)
   };
 
   return (
@@ -111,10 +146,12 @@ const TabItem = ({
   route,
   pathname,
   onPress,
+  badgeCount = 0,
 }: {
-  route: typeof ROUTES[0];
+  route: (typeof ROUTES)[0];
   pathname: string;
   onPress: () => void;
+  badgeCount?: number;
 }) => {
   const active = isActive(route.path, pathname);
   const scale = useRef(new Animated.Value(1)).current;
@@ -136,6 +173,9 @@ const TabItem = ({
     onPress();
   };
 
+  const showBadge = badgeCount > 0;
+  const badgeText = badgeCount > 99 ? "99+" : String(badgeCount);
+
   return (
     <Pressable style={ts.tabItem} onPress={handlePress} android_ripple={null}>
       <Animated.View style={[ts.tabInner, { transform: [{ scale }] }]}>
@@ -145,6 +185,13 @@ const TabItem = ({
             size={22}
             color={active ? C.accent : C.ink3}
           />
+          {showBadge && (
+            <View style={ts.tabBadge}>
+              <Text style={ts.tabBadgeText} numberOfLines={1}>
+                {badgeText}
+              </Text>
+            </View>
+          )}
         </View>
         <Animated.Text style={[ts.tabLabel, active && ts.tabLabelActive, { opacity: dotOpacity }]}>
           {route.label}
@@ -157,17 +204,41 @@ const TabItem = ({
 const ts = StyleSheet.create({
   tabItem: { flex: 1, alignItems: "center", justifyContent: "center" },
   tabInner: { alignItems: "center", justifyContent: "center", paddingVertical: 6, gap: 3 },
-  tabIconWrap: { width: 44, height: 32, alignItems: "center", justifyContent: "center", borderRadius: 16 },
+  tabIconWrap: {
+    width: 44,
+    height: 32,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 16,
+    position: "relative",
+  },
   tabIconWrapActive: { backgroundColor: C.accentSoft },
+  tabBadge: {
+    position: "absolute",
+    top: -2,
+    right: 2,
+    minWidth: 16,
+    height: 16,
+    paddingHorizontal: 4,
+    borderRadius: 8,
+    backgroundColor: C.accent,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1.5,
+    borderColor: C.tabBg,
+  },
+  tabBadgeText: { color: "#fff", fontSize: 9, fontWeight: "800" },
   tabLabel: { fontSize: 10, fontWeight: "600", color: C.ink3, letterSpacing: 0.2 },
   tabLabelActive: { color: C.accent },
 });
 
 // ─── Main layout ───────────────────────────────────────────────────────────────
 export default function MainLayout() {
-  const { isAuthenticated, logout } = useUserStore();
+  const { isAuthenticated, logout, user } = useUserStore();
+  const { data: restaurantInfo } = useGetRestaurantInformation();
   const router = useRouter();
   const pathname = usePathname();
+  const staffBadges = useStaffAlertsSync(pathname);
   const insets = useSafeAreaInsets();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
@@ -179,6 +250,7 @@ export default function MainLayout() {
   // ── Auth redirect ──────────────────────────────────────────────────────────
   useEffect(() => {
     if (!isAuthenticated) {
+      useStaffAlertsStore.getState().reset();
       const t = setTimeout(() => {
         router.replace("/(auth)/login");
         setIsCheckingAuth(false);
@@ -236,6 +308,7 @@ export default function MainLayout() {
         onPress: async () => {
           try {
             setIsLoggingOut(true);
+            useStaffAlertsStore.getState().reset();
             logout();
             await RemoveUserToken();
             setTimeout(() => router.replace("/(auth)/login"), 100);
@@ -290,16 +363,7 @@ export default function MainLayout() {
             <Text style={layout.navTitleText}>{pageTitle}</Text>
           </View>
 
-          {/* Notification bell */}
-          <Pressable
-            style={layout.notifBtn}
-            android_ripple={{ color: C.accentMid, borderless: true, radius: 20 }}
-          >
-            <Ionicons name="notifications-outline" size={22} color={C.ink2} />
-            <View style={layout.notifBadge}>
-              <Text style={layout.notifBadgeText}>3</Text>
-            </View>
-          </Pressable>
+         
         </View>
       </View>
 
@@ -318,6 +382,15 @@ export default function MainLayout() {
               route={route}
               pathname={pathname}
               onPress={() => handleNavigate(route.path)}
+              badgeCount={
+                route.staffBadge === "approval"
+                  ? staffBadges.approval
+                  : route.staffBadge === "orderRequest"
+                    ? staffBadges.orderRequest
+                    : route.staffBadge === "ordersStatus"
+                      ? staffBadges.ordersStatus
+                      : 0
+              }
             />
           ))}
         </View>
@@ -341,30 +414,25 @@ export default function MainLayout() {
           <View style={[layout.sidebarHeader, { paddingTop: insets.top + 16 }]}>
             <View style={layout.brandRow}>
               <View style={layout.brandLogo}>
-                <Text style={layout.brandLogoText}>DX</Text>
+                <Text style={layout.brandLogoText}>{restaurantInfo?.info?.name?.charAt(0) || "RR"}</Text>
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={layout.brandName}>DineX</Text>
-                <Text style={layout.brandSub}>Restaurant Management</Text>
+                <Text style={layout.brandName}>{restaurantInfo?.info?.name || "UNKNOWN RESTAURANT NAME"}</Text>
+                <Text style={layout.brandSub}>{restaurantInfo?.info?.slogan || "UNKNOWN SLOGAN"}</Text>
               </View>
             </View>
-            <Pressable onPress={() => setIsSidebarOpen(false)} style={layout.closeBtn}>
-              <Ionicons name="close" size={20} color={C.ink3} />
-            </Pressable>
           </View>
-
-          <View style={layout.divider} />
 
           {/* ── User card ── */}
           <View style={layout.userCard}>
             <View style={layout.userAvatar}>
-              <Text style={layout.userAvatarText}>AD</Text>
+              <Text style={layout.userAvatarText}>{user?.name?.charAt(0) || "UU"}</Text>
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={layout.userName}>Admin User</Text>
+              <Text style={layout.userName}>{user?.name || "UNKNOWN USER"} </Text>
               <View style={layout.userRolePill}>
                 <View style={layout.userRoleDot} />
-                <Text style={layout.userRoleText}>Restaurant Manager</Text>
+                <Text style={layout.userRoleText}>{user?.role || "UNKNOWN ROLE"}</Text>
               </View>
             </View>
           </View>

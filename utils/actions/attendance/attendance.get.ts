@@ -1,7 +1,6 @@
 import { getErrorMessage } from "@/utils/helper/get-error-message";
 import { GetUserToken } from "@/utils/storage/user.auth.storage";
-import { AttendanceLeaveByUserResponse, AttendanceLeaveQuery, AttendanceLeaveResponse, AttendanceStatus } from "@/utils/types/attendance/attendance.types"
-import { queryOptions } from "@tanstack/react-query";
+import { Attendance, AttendanceLeaveByUserResponse, AttendanceLeaveQuery, AttendanceLeaveResponse, AttendanceStatus } from "@/utils/types/attendance/attendance.types"
 import axios from "axios";
 
 interface GetTodayAttendanceType {
@@ -10,6 +9,45 @@ interface GetTodayAttendanceType {
     error ?: any;
     attendance ?: AttendanceLeaveResponse
 } 
+
+
+export const getTodayAttendanceByUserId = async() =>{
+    try {
+            const user_token = await GetUserToken();
+        if (!user_token) throw new Error('invalid user');
+         const res = await axios.get(
+            `${process.env.EXPO_PUBLIC_BACKEND_URL}/api/v1/attendance-service/get-today-attendance-by-id`,
+            {
+                headers: {
+                    Authorization: `Bearer ${user_token}`,
+                },
+                withCredentials: true,
+            }
+        );
+
+        const data  = res.data;
+        console.log("thisis today user id sattendance : ", data)
+        const attendance : Attendance | undefined = data?.attendance;
+        if(!attendance){
+            return {
+                success : false,
+                error : "failed to get user attendance"
+            }
+        }
+
+        return {
+            attendance, success : true,
+        }
+
+    } catch (error) {
+        error =getErrorMessage(error)
+        return {
+            success : false,
+            error
+        }
+        
+    }
+}
 
 // Update your API function to match backend query parameters
 export const getAttendanceLeaveHistoryByUserId = async (query: AttendanceLeaveQuery) => {

@@ -59,6 +59,10 @@ export default function LoginCard() {
         }
     };
 
+    const handleForgotPassword = () => {
+        router.push("/forgot-password");
+    };
+
     return (
         <KeyboardAvoidingView
             style={{ flex: 1 }}
@@ -122,6 +126,11 @@ export default function LoginCard() {
                             </Pressable>
                         </View>
                     </View>
+
+                    {/* Forgot Password Link */}
+                    <Pressable onPress={handleForgotPassword} style={styles.forgotPasswordContainer}>
+                        <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
+                    </Pressable>
 
                     {/* Login Button */}
                     <Pressable
@@ -204,14 +213,57 @@ const styles = StyleSheet.create({
         shadowRadius: 15,
         elevation: 3,
     },
-    welcomeText: { fontSize: 22, fontWeight: "700", color: "#0f172a", marginBottom: 6 },
-    subtitle: { fontSize: 14, color: "#64748b", marginBottom: 24 },
-    inputContainer: { marginBottom: 16 },
-    label: { fontSize: 13, fontWeight: "600", color: "#334155", marginBottom: 6 },
-    inputWrapper: { flexDirection: "row", alignItems: "center", backgroundColor: "#f8fafc", borderRadius: 12, borderWidth: 1, borderColor: "#e2e8f0" },
-    inputIcon: { paddingLeft: 12 },
-    input: { flex: 1, paddingVertical: 14, paddingHorizontal: 12, fontSize: 15, color: "#0f172a" },
-    eyeIcon: { paddingRight: 12 },
+    welcomeText: { 
+        fontSize: 22, 
+        fontWeight: "700", 
+        color: "#0f172a", 
+        marginBottom: 6 
+    },
+    subtitle: { 
+        fontSize: 14, 
+        color: "#64748b", 
+        marginBottom: 24 
+    },
+    inputContainer: { 
+        marginBottom: 16 
+    },
+    label: { 
+        fontSize: 13, 
+        fontWeight: "600", 
+        color: "#334155", 
+        marginBottom: 6 
+    },
+    inputWrapper: { 
+        flexDirection: "row", 
+        alignItems: "center", 
+        backgroundColor: "#f8fafc", 
+        borderRadius: 12, 
+        borderWidth: 1, 
+        borderColor: "#e2e8f0" 
+    },
+    inputIcon: { 
+        paddingLeft: 12 
+    },
+    input: { 
+        flex: 1, 
+        paddingVertical: 14, 
+        paddingHorizontal: 12, 
+        fontSize: 15, 
+        color: "#0f172a" 
+    },
+    eyeIcon: { 
+        paddingRight: 12 
+    },
+    forgotPasswordContainer: {
+        alignSelf: "flex-end",
+        marginBottom: 20,
+        marginTop: 4,
+    },
+    forgotPasswordText: {
+        fontSize: 13,
+        color: "#dc2626",
+        fontWeight: "500",
+    },
     button: {
         backgroundColor: "#dc2626",
         borderRadius: 12,
@@ -225,9 +277,19 @@ const styles = StyleSheet.create({
         shadowRadius: 8,
         elevation: 4,
     },
-    buttonDisabled: { opacity: 0.7 },
-    buttonText: { color: "#fff", fontWeight: "600", fontSize: 16 },
-    adminContact: { textAlign: "center", fontSize: 12, color: "#64748b" },
+    buttonDisabled: { 
+        opacity: 0.7 
+    },
+    buttonText: { 
+        color: "#fff", 
+        fontWeight: "600", 
+        fontSize: 16 
+    },
+    adminContact: { 
+        textAlign: "center", 
+        fontSize: 12, 
+        color: "#64748b" 
+    },
     alreadyLoggedIn: {
         alignItems: "center",
         marginTop: 24,

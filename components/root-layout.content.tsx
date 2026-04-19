@@ -11,7 +11,7 @@ export default function RootLayoutContent() {
   const scheme = useColorScheme();
   const router = useRouter();
   const { setUser, logout } = useUserStore();
-  const { data, isLoading, isError, error } = useGetUserFromToken();
+  const { data, isLoading } = useGetUserFromToken();
 
   useEffect(() => {
     if (isLoading || !data) return;
@@ -55,7 +55,7 @@ export default function RootLayoutContent() {
       >
         <StatusBar style={scheme === "dark" ? "light" : "dark"} />
         <Slot />
-        <Toast />
+       
       </SafeAreaView>
     </SafeAreaProvider>
   );
